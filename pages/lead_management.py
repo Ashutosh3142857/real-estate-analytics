@@ -5,16 +5,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import random
-import sys
-import os
-import logging
-
-# Import custom modules
-from utils.email_service import send_email, get_email_templates, create_email_campaign, get_email_campaigns, send_campaign_email
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 def show_lead_management():
     st.title("AI-Powered Lead Qualification & Nurturing")
@@ -218,55 +208,11 @@ def show_lead_dashboard():
                     st.rerun()
             
             elif action == "Send Email":
-                # Get email templates for selection
-                try:
-                    templates = get_email_templates()
-                    template_options = ["Custom Email"] + [t.name for t in templates] if templates else ["Custom Email"]
-                    selected_template = st.selectbox("Select Template", options=template_options)
-                except Exception as e:
-                    logger.error(f"Error loading email templates: {e}")
-                    selected_template = "Custom Email"
-                
-                if selected_template == "Custom Email":
-                    email_subject = st.text_input("Email Subject")
-                    email_content = st.text_area("Email Content", height=150)
-                else:
-                    # Find the selected template
-                    template = next((t for t in templates if t.name == selected_template), None)
-                    if template:
-                        email_subject = template.subject
-                        email_content = template.content
-                    else:
-                        email_subject = ""
-                        email_content = ""
-                
-                # Check if email service is configured
-                from utils.email_service import get_email_config
-                email_config = get_email_config()
-                
+                email_subject = st.text_input("Email Subject")
                 if st.button("Send Email"):
-                    if not email_config:
-                        st.error("Email service is not configured. Please set up email credentials in API Settings.")
-                    elif not email_subject or not email_content:
-                        st.error("Email subject and content are required.")
-                    else:
-                        try:
-                            # Send the email
-                            result = send_email(
-                                recipient_email=lead['email'],
-                                subject=email_subject,
-                                content=email_content
-                            )
-                            
-                            if result:
-                                # Update lead status
-                                st.session_state.leads.loc[lead_index, 'last_activity'] = f'Email sent: {email_subject}'
-                                st.success(f"Email sent to {lead['email']}")
-                                st.rerun()
-                            else:
-                                st.error("Failed to send email. Please check email settings and try again.")
-                        except Exception as e:
-                            st.error(f"Error sending email: {str(e)}")
+                    st.session_state.leads.loc[lead_index, 'last_activity'] = 'Email sent'
+                    st.success(f"Email sent to {lead['email']}")
+                    st.rerun()
             
             elif action == "Schedule Call":
                 call_date = st.date_input("Call Date")
@@ -479,149 +425,78 @@ def show_lead_nurturing():
     based on their interests, behavior, and stage in the buying journey.
     """)
     
-    # Check if email service is configured
-    from utils.email_service import get_email_config
-    email_config = get_email_config()
-    
-    if not email_config:
-        st.warning("⚠️ Email service is not configured. Please set up email credentials in API Settings to enable campaigns.")
-    
     # Display available nurturing campaigns
     st.write("### Available Nurturing Campaigns")
     
-    # Try to get real campaigns from the database
-    try:
-        db_campaigns = get_email_campaigns()
-        
-        # If no campaigns exist in the database, use the sample campaigns
-        if not db_campaigns:
-            # Sample campaign data for demonstration
-            campaigns = [
-                {
-                    'name': 'First-time Homebuyer Education',
-                    'trigger': 'New lead identified as first-time buyer',
-                    'emails': 5,
-                    'duration': '45 days',
-                    'open_rate': '32%',
-                    'status': 'Active'
-                },
-                {
-                    'name': 'Luxury Property Showcase',
-                    'trigger': 'Interest in properties over $1M',
-                    'emails': 4,
-                    'duration': '30 days',
-                    'open_rate': '28%',
-                    'status': 'Active'
-                },
-                {
-                    'name': 'Investment Property Opportunities',
-                    'trigger': 'Interest in investment properties',
-                    'emails': 6,
-                    'duration': '60 days',
-                    'open_rate': '35%',
-                    'status': 'Active'
-                },
-                {
-                    'name': 'Neighborhood Spotlight Series',
-                    'trigger': 'Interest in specific neighborhoods',
-                    'emails': 8,
-                    'duration': '90 days',
-                    'open_rate': '26%',
-                    'status': 'Paused'
-                },
-                {
-                    'name': 'Re-engagement Campaign',
-                    'trigger': 'No activity for 30+ days',
-                    'emails': 3,
-                    'duration': '21 days',
-                    'open_rate': '18%',
-                    'status': 'Active'
-                }
-            ]
-        else:
-            # Convert database campaigns to the display format
-            campaigns = []
-            for campaign in db_campaigns:
-                # Get number of steps for this campaign
-                steps = get_campaign_steps(campaign.id)
-                num_emails = len(steps)
-                
-                # Calculate duration based on steps
-                max_delay = max([step.delay_days for step in steps]) if steps else 0
-                
-                # Get campaign performance (if available)
-                from utils.email_service import get_email_performance
-                performance = get_email_performance(campaign_id=campaign.id)
-                
-                campaigns.append({
-                    'id': campaign.id,
-                    'name': campaign.name,
-                    'trigger': campaign.trigger_type,
-                    'emails': num_emails,
-                    'duration': f"{max_delay} days",
-                    'open_rate': f"{performance['open_rate']:.1f}%" if performance else "N/A",
-                    'status': campaign.status
-                })
-    except Exception as e:
-        logger.error(f"Error loading campaigns: {e}")
-        st.error(f"Error loading campaigns: {str(e)}")
-        campaigns = []
+    campaigns = [
+        {
+            'name': 'First-time Homebuyer Education',
+            'trigger': 'New lead identified as first-time buyer',
+            'emails': 5,
+            'duration': '45 days',
+            'open_rate': '32%',
+            'status': 'Active'
+        },
+        {
+            'name': 'Luxury Property Showcase',
+            'trigger': 'Interest in properties over $1M',
+            'emails': 4,
+            'duration': '30 days',
+            'open_rate': '28%',
+            'status': 'Active'
+        },
+        {
+            'name': 'Investment Property Opportunities',
+            'trigger': 'Interest in investment properties',
+            'emails': 6,
+            'duration': '60 days',
+            'open_rate': '35%',
+            'status': 'Active'
+        },
+        {
+            'name': 'Neighborhood Spotlight Series',
+            'trigger': 'Interest in specific neighborhoods',
+            'emails': 8,
+            'duration': '90 days',
+            'open_rate': '26%',
+            'status': 'Paused'
+        },
+        {
+            'name': 'Re-engagement Campaign',
+            'trigger': 'No activity for 30+ days',
+            'emails': 3,
+            'duration': '21 days',
+            'open_rate': '18%',
+            'status': 'Active'
+        }
+    ]
+    
+    campaign_df = pd.DataFrame(campaigns)
     
     # Create an expanded table view with colors
-    if campaigns:
-        for i, campaign in enumerate(campaigns):
-            with st.container():
-                col1, col2 = st.columns([3, 1])
-                
-                with col1:
-                    status_color = "green" if campaign['status'].lower() == 'active' else "orange"
-                    st.markdown(f"""
-                    ### {campaign['name']} <span style='color:{status_color};font-size:0.8em;'>{campaign['status']}</span>
-                    **Trigger:** {campaign['trigger']}  
-                    **Sequence:** {campaign['emails']} emails over {campaign['duration']}  
-                    **Performance:** {campaign['open_rate']}
-                    """, unsafe_allow_html=True)
-                
-                with col2:
-                    st.write("")
-                    st.write("")
-                    
-                    # Only show actionable buttons if email is configured
-                    if email_config:
-                        campaign_id = campaign.get('id')
-                        
-                        if campaign['status'].lower() == 'active':
-                            if st.button("Pause Campaign", key=f"pause_{i}"):
-                                if campaign_id:
-                                    try:
-                                        from utils.email_service import update_campaign_status
-                                        success = update_campaign_status(campaign_id, "paused")
-                                        if success:
-                                            st.success(f"Campaign '{campaign['name']}' paused successfully")
-                                            st.rerun()
-                                        else:
-                                            st.error("Failed to pause campaign")
-                                    except Exception as e:
-                                        st.error(f"Error pausing campaign: {str(e)}")
-                        else:
-                            if st.button("Activate Campaign", key=f"activate_{i}"):
-                                if campaign_id:
-                                    try:
-                                        from utils.email_service import update_campaign_status
-                                        success = update_campaign_status(campaign_id, "active")
-                                        if success:
-                                            st.success(f"Campaign '{campaign['name']}' activated successfully")
-                                            st.rerun()
-                                        else:
-                                            st.error("Failed to activate campaign")
-                                    except Exception as e:
-                                        st.error(f"Error activating campaign: {str(e)}")
-                        
-                        st.button("Edit Campaign", key=f"edit_{i}")
-                
-                st.markdown("---")
-    else:
-        st.info("No email campaigns found. Create a new campaign below.")
+    for i, campaign in enumerate(campaigns):
+        with st.container():
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                status_color = "green" if campaign['status'] == 'Active' else "orange"
+                st.markdown(f"""
+                ### {campaign['name']} <span style='color:{status_color};font-size:0.8em;'>{campaign['status']}</span>
+                **Trigger:** {campaign['trigger']}  
+                **Sequence:** {campaign['emails']} emails over {campaign['duration']}  
+                **Performance:** {campaign['open_rate']} open rate
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                st.write("")
+                st.write("")
+                if campaign['status'] == 'Active':
+                    st.button("Pause Campaign", key=f"pause_{i}")
+                else:
+                    st.button("Activate Campaign", key=f"activate_{i}")
+                st.button("Edit Campaign", key=f"edit_{i}")
+            
+            st.markdown("---")
     
     # Create a new nurturing campaign
     st.subheader("Create New Nurturing Campaign")

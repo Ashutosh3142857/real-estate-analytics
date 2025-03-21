@@ -54,7 +54,7 @@ page = st.sidebar.radio(
     "Navigate to",
     ["Dashboard", "Market Insights", "Market News", "Property Analysis", "Property Valuation", 
      "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator", 
-     "Settings", "System Integrations", "API Settings"]
+     "Settings", "System Integrations"]
 )
 
 # Filter section in sidebar
@@ -361,16 +361,6 @@ elif page == "System Integrations":
         show_integration_settings()
     except Exception as e:
         st.error(f"Error loading System Integrations page: {str(e)}")
-        import traceback
-        st.code(traceback.format_exc(), language="python")
-
-elif page == "API Settings":
-    # Import and run API settings page
-    try:
-        from pages.api_settings import show_api_settings
-        show_api_settings()
-    except Exception as e:
-        st.error(f"Error loading API Settings page: {str(e)}")
         import traceback
         st.code(traceback.format_exc(), language="python")
 
