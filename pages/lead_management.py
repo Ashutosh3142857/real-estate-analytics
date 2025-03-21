@@ -5,6 +5,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import random
+import sys
+import os
+import logging
+
+# Import custom modules
+from utils.email_service import send_email, get_email_templates, create_email_campaign, get_email_campaigns, send_campaign_email
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def show_lead_management():
     st.title("AI-Powered Lead Qualification & Nurturing")
