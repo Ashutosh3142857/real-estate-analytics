@@ -479,8 +479,8 @@ def show_property_valuation():
                 else:
                     discount_pct = ((city_avg - predicted_price) / city_avg) * 100
                     st.write(f"This property is valued **{discount_pct:.1f}% below** the city average of ${city_avg:,.0f}.")
-                else:
-                    st.error("Unable to generate a valuation. Please check your inputs.")
+            else:
+                st.error("Unable to generate a valuation. Please check your inputs.")
     
     with tab2:
         st.subheader("Neighborhood Value Analysis")
