@@ -54,7 +54,7 @@ page = st.sidebar.radio(
     "Navigate to",
     ["Dashboard", "Market Insights", "Market News", "Property Analysis", "Property Valuation", 
      "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator", 
-     "Settings", "System Integrations"]
+     "Messaging Center", "Settings", "System Integrations"]
 )
 
 # Filter section in sidebar
@@ -341,6 +341,16 @@ elif page == "Marketing Generator":
         show_marketing_generator()
     except Exception as e:
         st.error(f"Error loading Marketing Generator page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
+
+elif page == "Messaging Center":
+    # Import and run messaging page
+    try:
+        from pages.messaging import show_messaging
+        show_messaging()
+    except Exception as e:
+        st.error(f"Error loading Messaging Center page: {str(e)}")
         import traceback
         st.code(traceback.format_exc(), language="python")
     
