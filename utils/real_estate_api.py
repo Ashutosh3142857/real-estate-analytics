@@ -84,7 +84,9 @@ def search_properties_by_location(location, limit=10, use_cache=True, save_to_db
     # Determine if this is a US or international search
     is_international = "," in location and any(country in location for country in 
                             ["UK", "France", "Germany", "Japan", "China", "Australia", 
-                             "Brazil", "Canada", "Mexico", "India", "Singapore"])
+                             "Brazil", "Canada", "Mexico", "India", "Singapore", "Maharashtra",
+                             "Karnataka", "Telangana", "Tamil Nadu", "West Bengal", 
+                             "Gujarat", "Haryana", "Uttar Pradesh", "Delhi"])
     
     # Set the appropriate API host based on location
     api_host = "realty-mole-property-api.p.rapidapi.com" if is_international else "realty-in-us.p.rapidapi.com"
@@ -133,7 +135,7 @@ def search_properties_by_location(location, limit=10, use_cache=True, save_to_db
                         'city': prop.get('city', 'Unknown City'),
                         'state': prop.get('state', 'Unknown State'),
                         'zip_code': prop.get('zipCode', 'Unknown ZIP'),
-                        'country': location_parts[1].strip() if len(location_parts) > 1 else '',
+                        'country': 'India' if any(state in location for state in ["Maharashtra", "Karnataka", "Telangana", "Tamil Nadu", "West Bengal", "Gujarat", "Haryana", "Uttar Pradesh", "Delhi"]) else (location_parts[-1].strip() if len(location_parts) > 1 else ''),
                         'price': prop.get('price', 0),
                         'bedrooms': prop.get('bedrooms', 0),
                         'bathrooms': prop.get('bathrooms', 0),
@@ -236,8 +238,23 @@ def search_properties_zillow(location, limit=10):
     # Extract country or state_code if provided
     country = ""
     state_code = ""
+    is_indian_location = False
+    
     if len(location_parts) > 1:
         country_or_state = location_parts[1].strip()
+        # Check for Indian states
+        indian_states = ["Maharashtra", "Karnataka", "Telangana", "Tamil Nadu", "West Bengal",
+                         "Gujarat", "Haryana", "Uttar Pradesh", "Delhi"]
+        
+        if country_or_state in indian_states or "India" in location:
+            is_indian_location = True
+            # Use fallback to database for Indian locations since API might not support them well
+            db_filters = {"city": city, "country": "India"}
+            db_results = get_properties(db_filters)
+            if not db_results.empty:
+                db_results = add_historical_prices(db_results)
+                return db_results
+        
         # Check if it's a 2-letter state code
         if len(country_or_state) == 2 and country_or_state.isalpha():
             state_code = country_or_state
@@ -374,8 +391,13 @@ def get_location_suggestions(query):
                           "Madrid, Spain", "Amsterdam, Netherlands", "Vienna, Austria", 
                           "Moscow, Russia", "Stockholm, Sweden", "Athens, Greece"],
                 "Asia": ["Tokyo, Japan", "Shanghai, China", "Singapore", "Seoul, South Korea", 
-                        "Mumbai, India", "Bangkok, Thailand", "Dubai, UAE", 
-                        "Hong Kong", "Beijing, China", "Istanbul, Turkey"],
+                        "Bangkok, Thailand", "Dubai, UAE", "Hong Kong", "Beijing, China", 
+                        "Istanbul, Turkey"],
+                "India": ["Mumbai, Maharashtra, India", "Delhi, Delhi, India", "Bangalore, Karnataka, India",
+                         "Hyderabad, Telangana, India", "Chennai, Tamil Nadu, India", 
+                         "Kolkata, West Bengal, India", "Pune, Maharashtra, India", 
+                         "Ahmedabad, Gujarat, India", "Gurgaon, Haryana, India", 
+                         "Noida, Uttar Pradesh, India"],
                 "Oceania": ["Sydney, Australia", "Melbourne, Australia", "Auckland, New Zealand", 
                            "Wellington, New Zealand", "Brisbane, Australia", "Perth, Australia"],
                 "South America": ["Rio de Janeiro, Brazil", "Buenos Aires, Argentina", "Lima, Peru", 

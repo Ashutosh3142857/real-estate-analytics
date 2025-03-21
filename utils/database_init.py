@@ -70,8 +70,22 @@ def add_initial_market_trends(session):
         {"city": "Cape Town", "state": "", "country": "South Africa"}
     ]
     
+    # Major Indian cities
+    indian_cities = [
+        {"city": "Mumbai", "state": "Maharashtra", "country": "India"},
+        {"city": "Delhi", "state": "Delhi", "country": "India"},
+        {"city": "Bangalore", "state": "Karnataka", "country": "India"},
+        {"city": "Hyderabad", "state": "Telangana", "country": "India"},
+        {"city": "Chennai", "state": "Tamil Nadu", "country": "India"},
+        {"city": "Kolkata", "state": "West Bengal", "country": "India"},
+        {"city": "Pune", "state": "Maharashtra", "country": "India"},
+        {"city": "Ahmedabad", "state": "Gujarat", "country": "India"},
+        {"city": "Gurgaon", "state": "Haryana", "country": "India"},
+        {"city": "Noida", "state": "Uttar Pradesh", "country": "India"}
+    ]
+    
     # Combine all cities
-    all_cities = us_cities + international_cities
+    all_cities = us_cities + international_cities + indian_cities
     
     # Generate 24 months of market trend data for each city
     today = datetime.now()
@@ -83,7 +97,11 @@ def add_initial_market_trends(session):
         "Phoenix": 350000, "Philadelphia": 225000, "San Antonio": 210000, "San Diego": 650000,
         "Dallas": 280000, "San Francisco": 1200000, "London": 650000, "Paris": 580000,
         "Tokyo": 450000, "Berlin": 420000, "Sydney": 830000, "Toronto": 750000,
-        "Dubai": 500000, "Singapore": 880000, "São Paulo": 180000, "Cape Town": 150000
+        "Dubai": 500000, "Singapore": 880000, "São Paulo": 180000, "Cape Town": 150000,
+        # Indian cities in INR converted to USD (approximate values)
+        "Mumbai": 120000, "Delhi": 95000, "Bangalore": 110000, "Hyderabad": 85000,
+        "Chennai": 80000, "Kolkata": 70000, "Pune": 90000, "Ahmedabad": 65000,
+        "Gurgaon": 115000, "Noida": 85000
     }
     
     # Annual appreciation rates for different markets (percentage)
@@ -92,7 +110,11 @@ def add_initial_market_trends(session):
         "Phoenix": 7.8, "Philadelphia": 3.2, "San Antonio": 4.1, "San Diego": 6.3,
         "Dallas": 5.8, "San Francisco": 5.5, "London": 3.8, "Paris": 3.5,
         "Tokyo": 2.5, "Berlin": 4.8, "Sydney": 6.2, "Toronto": 5.3,
-        "Dubai": 7.5, "Singapore": 4.5, "São Paulo": 6.0, "Cape Town": 5.5
+        "Dubai": 7.5, "Singapore": 4.5, "São Paulo": 6.0, "Cape Town": 5.5,
+        # Indian cities appreciation rates (percentage)
+        "Mumbai": 8.2, "Delhi": 7.5, "Bangalore": 9.3, "Hyderabad": 8.8,
+        "Chennai": 7.2, "Kolkata": 6.5, "Pune": 8.5, "Ahmedabad": 7.8,
+        "Gurgaon": 9.0, "Noida": 8.3
     }
     
     # Days on market by city
@@ -101,7 +123,11 @@ def add_initial_market_trends(session):
         "Phoenix": 32, "Philadelphia": 50, "San Antonio": 42, "San Diego": 30,
         "Dallas": 35, "San Francisco": 28, "London": 40, "Paris": 45,
         "Tokyo": 55, "Berlin": 42, "Sydney": 35, "Toronto": 32,
-        "Dubai": 60, "Singapore": 70, "São Paulo": 75, "Cape Town": 65
+        "Dubai": 60, "Singapore": 70, "São Paulo": 75, "Cape Town": 65,
+        # Indian cities days on market
+        "Mumbai": 50, "Delhi": 55, "Bangalore": 45, "Hyderabad": 60,
+        "Chennai": 65, "Kolkata": 70, "Pune": 50, "Ahmedabad": 75,
+        "Gurgaon": 40, "Noida": 45
     }
     
     # Create a list to hold all trend records
