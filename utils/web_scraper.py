@@ -1,13 +1,22 @@
+"""
+Web scraping module for gathering real estate market information and property details.
+This module uses Trafilatura for content extraction, which provides cleaner text from HTML pages.
+"""
+
 import trafilatura
-import streamlit as st
-import pandas as pd
+import logging
+import re
+import json
 from datetime import datetime
+from typing import Dict, Any, Optional, List
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 def get_website_text_content(url: str) -> str:
     """
-    This function takes a url and returns the main text content of the website.
-    The text content is extracted using trafilatura and easier to understand
-    than raw HTML.
+    Extract the main text content from a website.
     
     Args:
         url (str): The URL of the website to scrape
@@ -16,22 +25,24 @@ def get_website_text_content(url: str) -> str:
         str: The main text content of the website
     """
     try:
-        # Send a request to the website
+        # Download the webpage
         downloaded = trafilatura.fetch_url(url)
         
         if not downloaded:
-            return f"Failed to download content from {url}"
+            logger.error(f"Failed to download content from {url}")
+            return ""
         
-        # Extract the main text content
+        # Extract the main content
         text = trafilatura.extract(downloaded)
         
         if not text:
-            return f"No content could be extracted from {url}"
+            logger.error(f"Failed to extract content from {url}")
+            return ""
         
         return text
-    
     except Exception as e:
-        return f"Error scraping website: {str(e)}"
+        logger.error(f"Error extracting content from {url}: {str(e)}")
+        return ""
 
 def get_real_estate_market_info(location: str = "") -> str:
     """
@@ -44,45 +55,43 @@ def get_real_estate_market_info(location: str = "") -> str:
     Returns:
         str: The scraped market information
     """
-    # Default URLs for real estate market information
-    default_urls = [
-        "https://www.nar.realtor/research-and-statistics/housing-statistics",
-        "https://www.zillow.com/research/",
-        "https://www.redfin.com/news/housing-market-news/"
-    ]
-    
-    # If location is provided, try to find location-specific information
-    if location and location.strip():
-        # Construct location-specific URLs
-        # Note: These are examples and might not work for all locations
-        location_formatted = location.replace(" ", "-").lower()
-        location_urls = [
-            f"https://www.zillow.com/market-report/{location_formatted}/",
-            f"https://www.redfin.com/{location_formatted}-housing-market/",
-            f"https://www.realtor.com/realestateandhomes-search/{location_formatted}/overview"
+    try:
+        # Base URLs for real estate market information
+        urls = [
+            "https://www.nar.realtor/research-and-statistics/housing-statistics",
+            "https://www.zillow.com/research/",
+            "https://www.realtor.com/research/",
+            "https://www.corelogic.com/intelligence/latest-housing-data/"
         ]
         
+        # If location is provided, try location-specific sources
+        if location:
+            location_slug = location.lower().replace(" ", "-")
+            urls.extend([
+                f"https://www.zillow.com/research/local-market-reports/{location_slug}/",
+                f"https://www.realtor.com/realestateandhomes-search/{location_slug}/overview"
+            ])
+        
         # Try each URL until we get content
-        for url in location_urls:
+        for url in urls:
+            logger.info(f"Trying to scrape market information from {url}")
+            
             content = get_website_text_content(url)
-            if content and "Error" not in content and "Failed" not in content:
+            
+            if content and len(content) > 500:  # Only accept substantial content
+                logger.info(f"Successfully scraped {len(content)} characters from {url}")
                 return content
-    
-    # If no location-specific content found or no location provided, use default URLs
-    combined_content = []
-    for url in default_urls:
-        content = get_website_text_content(url)
-        if content and "Error" not in content and "Failed" not in content:
-            combined_content.append(content)
-    
-    if not combined_content:
-        return "Unable to retrieve real estate market information."
-    
-    return "\n\n===\n\n".join(combined_content)
+        
+        # If no successful scrape, return empty string
+        logger.warning(f"Failed to scrape market information for {location or 'general market'}")
+        return ""
+    except Exception as e:
+        logger.error(f"Error getting real estate market info: {str(e)}")
+        return ""
 
-def scrape_property_details(property_url: str) -> dict:
+def scrape_property_details(property_url: str) -> Dict[str, Any]:
     """
-    Scrape detailed information about a specific property from its URL
+    Scrape detailed information about a specific property from its URL.
     
     Args:
         property_url (str): URL of the property listing
@@ -91,37 +100,66 @@ def scrape_property_details(property_url: str) -> dict:
         dict: Dictionary containing property details
     """
     try:
-        # Download the content
-        downloaded = trafilatura.fetch_url(property_url)
+        # Get the content from the URL
+        content = get_website_text_content(property_url)
         
-        if not downloaded:
-            return {"error": f"Failed to download content from {property_url}"}
+        if not content:
+            logger.warning(f"No content extracted from {property_url}")
+            return {}
         
-        # Extract the text
-        text = trafilatura.extract(downloaded)
+        # Extract property details using regex patterns
+        details = {}
         
-        if not text:
-            return {"error": f"No content could be extracted from {property_url}"}
+        # Price
+        price_match = re.search(r'\$[\d,]+(?:\.\d+)?', content)
+        if price_match:
+            details['price'] = price_match.group(0)
         
-        # Parse the extracted text to identify property details
-        # This is a simplified example - in a real application, 
-        # you would need more sophisticated parsing or use specific APIs
+        # Bedrooms
+        bedrooms_match = re.search(r'(\d+)\s*(?:bed|bedroom)', content, re.IGNORECASE)
+        if bedrooms_match:
+            details['bedrooms'] = int(bedrooms_match.group(1))
         
-        property_details = {
-            "url": property_url,
-            "scraped_date": datetime.now().strftime("%Y-%m-%d"),
-            "full_description": text[:1000] + "..." if len(text) > 1000 else text,
-            "scraped_text": text
-        }
+        # Bathrooms
+        bathrooms_match = re.search(r'(\d+(?:\.\d+)?)\s*(?:bath|bathroom)', content, re.IGNORECASE)
+        if bathrooms_match:
+            details['bathrooms'] = float(bathrooms_match.group(1))
         
-        return property_details
-    
+        # Square footage
+        sqft_match = re.search(r'(\d+[\d,]*)\s*(?:sq\.?\s*ft\.?|square\s*feet)', content, re.IGNORECASE)
+        if sqft_match:
+            details['sqft'] = int(sqft_match.group(1).replace(',', ''))
+        
+        # Address (simplified)
+        address_match = re.search(r'\d+\s+[A-Za-z\s]+(?:Avenue|Ave|Street|St|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Court|Ct|Place|Pl|Way)[,\s]+[A-Za-z\s]+,\s+[A-Z]{2}', content)
+        if address_match:
+            details['address'] = address_match.group(0)
+        
+        # Property type
+        property_types = ['Single Family', 'Condo', 'Townhouse', 'Multi Family', 'Apartment', 'Land', 'Mobile Home']
+        for prop_type in property_types:
+            if re.search(r'\b' + re.escape(prop_type) + r'\b', content, re.IGNORECASE):
+                details['property_type'] = prop_type
+                break
+        
+        # Year built
+        year_match = re.search(r'(?:Built|Year built|Construction)[\s:]+(\d{4})', content, re.IGNORECASE)
+        if year_match:
+            details['year_built'] = int(year_match.group(1))
+        
+        # Add scrape timestamp
+        details['scraped_at'] = datetime.now().isoformat()
+        details['source_url'] = property_url
+        
+        logger.info(f"Extracted {len(details)} property details from {property_url}")
+        return details
     except Exception as e:
-        return {"error": f"Error scraping property details: {str(e)}"}
+        logger.error(f"Error scraping property details: {str(e)}")
+        return {}
 
-def extract_market_insights(text: str) -> dict:
+def extract_market_insights(text: str) -> Dict[str, Any]:
     """
-    Extract key market insights from scraped text
+    Extract key market insights from scraped text.
     
     Args:
         text (str): The scraped text content
@@ -129,30 +167,55 @@ def extract_market_insights(text: str) -> dict:
     Returns:
         dict: Dictionary of extracted market insights
     """
-    # This is a simplified example - in a real application, you would use 
-    # NLP techniques or an LLM to extract structured information from the text
-    
-    insights = {
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "content_length": len(text),
-        "excerpt": text[:500] + "..." if len(text) > 500 else text
-    }
-    
-    # Simple keyword-based extraction
-    market_indicators = {
-        "price_increase": ["price increase", "rising prices", "appreciation"],
-        "price_decrease": ["price decrease", "falling prices", "depreciation"],
-        "high_demand": ["high demand", "seller's market", "competitive market"],
-        "low_inventory": ["low inventory", "shortage", "limited supply"],
-        "buyer_opportunity": ["buyer's market", "opportunity", "good time to buy"]
-    }
-    
-    insights["detected_trends"] = []
-    
-    for trend, keywords in market_indicators.items():
-        for keyword in keywords:
-            if keyword.lower() in text.lower():
-                insights["detected_trends"].append(trend)
-                break
-    
-    return insights
+    try:
+        insights = {}
+        
+        # Median home price
+        median_price_match = re.search(r'median(?:\s+home)?\s+price(?:\s+of)?\s+(?:is|was)?\s*\$?([\d,]+(?:\.\d+)?)', text, re.IGNORECASE)
+        if median_price_match:
+            insights['median_price'] = median_price_match.group(1).replace(',', '')
+        
+        # Average home price
+        avg_price_match = re.search(r'average(?:\s+home)?\s+price(?:\s+of)?\s+(?:is|was)?\s*\$?([\d,]+(?:\.\d+)?)', text, re.IGNORECASE)
+        if avg_price_match:
+            insights['average_price'] = avg_price_match.group(1).replace(',', '')
+        
+        # Price change (year-over-year)
+        yoy_change_match = re.search(r'(increased|decreased|rose|fell|up|down)(?:\s+by)?\s+(\d+(?:\.\d+)?)(?:\s*%|\s+percent)', text, re.IGNORECASE)
+        if yoy_change_match:
+            direction = yoy_change_match.group(1).lower()
+            value = float(yoy_change_match.group(2))
+            
+            if direction in ['decreased', 'fell', 'down']:
+                value = -value
+                
+            insights['price_change_pct'] = value
+        
+        # Days on market
+        dom_match = re.search(r'(\d+)\s+days\s+on(?:\s+the)?\s+market', text, re.IGNORECASE)
+        if dom_match:
+            insights['days_on_market'] = int(dom_match.group(1))
+        
+        # Inventory / Supply
+        inventory_match = re.search(r'(\d+(?:\.\d+)?)\s+months\s+(?:of\s+)?(?:inventory|supply)', text, re.IGNORECASE)
+        if inventory_match:
+            insights['months_of_supply'] = float(inventory_match.group(1))
+        
+        # Interest rate
+        rate_match = re.search(r'(mortgage|interest)\s+rates?(?:\s+at|of)?\s+(\d+(?:\.\d+)?)(?:\s*%|\s+percent)', text, re.IGNORECASE)
+        if rate_match:
+            insights['interest_rate'] = float(rate_match.group(2))
+        
+        # Housing starts
+        starts_match = re.search(r'housing\s+starts\s+(?:at|of|were)?\s+([\d,]+)', text, re.IGNORECASE)
+        if starts_match:
+            insights['housing_starts'] = int(starts_match.group(1).replace(',', ''))
+        
+        # Add extraction timestamp
+        insights['extraction_date'] = datetime.now().strftime('%Y-%m-%d')
+        
+        logger.info(f"Extracted {len(insights)} market insights")
+        return insights
+    except Exception as e:
+        logger.error(f"Error extracting market insights: {str(e)}")
+        return {}
