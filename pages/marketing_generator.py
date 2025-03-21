@@ -3,7 +3,16 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 import random
+import io
+import os
+import base64
+from PIL import Image
 from datetime import datetime, timedelta
+
+# Import custom utilities
+from utils import email_service
+from utils import image_generator
+from utils import social_media_manager
 
 def show_marketing_generator():
     st.title("AI-Powered Hyperlocal Real Estate Marketing")
@@ -179,7 +188,7 @@ def show_social_media_generator(data):
     
     st.markdown("""
     Create engaging social media posts for your listings across multiple platforms.
-    Our AI generates platform-specific content optimized for maximum engagement.
+    Our AI generates platform-specific content and images optimized for maximum engagement.
     """)
     
     # Property selection
@@ -193,10 +202,10 @@ def show_social_media_generator(data):
     # Get the selected property details
     property_details = data[data['property_id'] == selected_property].iloc[0]
     
-    # Platform selection
+    # Platform selection with expanded options
     platforms = st.multiselect(
         "Select Platforms",
-        options=["Facebook", "Instagram", "Twitter", "LinkedIn"],
+        options=["Facebook", "Instagram", "Twitter", "LinkedIn", "TikTok", "Google"],
         default=["Facebook", "Instagram"]
     )
     
@@ -208,84 +217,232 @@ def show_social_media_generator(data):
     )
     
     # Include options
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        include_photos = st.checkbox("Include Photo Suggestions", value=True)
+        include_photos = st.checkbox("Generate Images", value=True)
         include_hashtags = st.checkbox("Include Hashtags", value=True)
     
     with col2:
         include_call_to_action = st.checkbox("Include Call to Action", value=True)
         include_questions = st.checkbox("Include Engagement Questions", value=True)
     
-    # Generate button
-    if st.button("Generate Social Media Content"):
-        # Generate content for each selected platform
-        for platform in platforms:
-            st.subheader(f"{platform} Post")
-            
-            post_content = generate_social_media_post(
-                property_details,
-                platform,
-                content_style,
-                include_photos,
-                include_hashtags,
-                include_call_to_action,
-                include_questions
+    with col3:
+        schedule_posts = st.checkbox("Schedule Posts", value=False)
+        generate_multiple = st.checkbox("Generate Multiple Versions", value=False)
+    
+    # Image style options (if images are included)
+    if include_photos:
+        st.subheader("Image Options")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            image_theme = st.selectbox(
+                "Image Theme",
+                options=["Professional", "Luxury", "Modern", "Warm & Inviting", "Family-Friendly"]
             )
             
-            # Display the generated content
-            with st.container():
-                st.markdown(f"**{post_content['headline']}**")
-                st.write(post_content['body'])
-                
-                if include_hashtags and 'hashtags' in post_content:
-                    st.write(post_content['hashtags'])
-                
-                if include_photos and 'photo_suggestion' in post_content:
-                    st.info(post_content['photo_suggestion'])
-                
-                # Engagement metrics
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("Est. Reach", f"{random.randint(500, 5000):,}")
-                
-                with col2:
-                    st.metric("Est. Engagement", f"{random.randint(1, 10)}%")
-                
-                with col3:
-                    if platform == "Facebook" or platform == "Instagram":
-                        metric_name = "Est. Likes"
-                    elif platform == "Twitter":
-                        metric_name = "Est. Retweets"
-                    else:  # LinkedIn
-                        metric_name = "Est. Interactions"
-                    
-                    st.metric(metric_name, f"{random.randint(10, 200)}")
+            image_focus = st.multiselect(
+                "Image Focus",
+                options=["Exterior", "Interior", "Key Features", "Location", "Lifestyle"],
+                default=["Exterior"]
+            )
+        
+        with col2:
+            include_property_details = st.checkbox("Include Property Details on Image", value=True)
+            include_branding = st.checkbox("Include Branding", value=True)
             
-            st.markdown("---")
-        
-        # Best posting times
-        st.subheader("Recommended Posting Schedule")
-        
-        posting_schedule = {
-            "Facebook": "Tuesday or Thursday, 1-3 PM",
-            "Instagram": "Wednesday, 11 AM or 2 PM",
-            "Twitter": "Wednesday or Friday, 9 AM",
-            "LinkedIn": "Tuesday through Thursday, 10-11 AM"
-        }
-        
-        for platform in platforms:
-            st.write(f"**{platform}:** {posting_schedule.get(platform, 'Anytime')}")
+            if include_branding:
+                brand_color = st.color_picker("Brand Color", "#0066cc")
+    
+    # Generate button
+    if st.button("Generate Social Media Content"):
+        # Show loading message
+        with st.spinner("Generating social media content and images..."):
+            # Display options for posting now or scheduling
+            if schedule_posts:
+                st.subheader("Posting Schedule")
+                
+                # Get optimal posting times from social media manager
+                posting_schedule = {}
+                for platform in platforms:
+                    platform_id = platform.lower()
+                    best_times = social_media_manager.get_best_posting_times(platform_id)
+                    today_name = datetime.now().strftime("%A")
+                    posting_schedule[platform] = ", ".join(best_times.get(today_name, ["12:00 PM"]))
+                
+                # Create a calendar view for scheduling
+                st.info("Select your preferred posting dates and times below")
+                
+                # For simplicity, just show the next 7 days as options
+                posting_days = []
+                for i in range(7):
+                    day = datetime.now() + timedelta(days=i)
+                    posting_days.append(day.strftime("%A, %B %d"))
+                
+                for platform in platforms:
+                    st.write(f"**{platform}** - Recommended times: {posting_schedule.get(platform, 'Anytime')}")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        selected_day = st.selectbox(f"Post day for {platform}", posting_days, key=f"day_{platform}")
+                    with col2:
+                        selected_time = st.time_input(f"Post time for {platform}", key=f"time_{platform}")
+            
+            # Generate content for each selected platform
+            for platform in platforms:
+                st.subheader(f"{platform} Post")
+                
+                versions = 2 if generate_multiple else 1
+                
+                for version in range(versions):
+                    if versions > 1:
+                        st.write(f"**Version {version + 1}**")
+                
+                    post_content = generate_social_media_post(
+                        property_details,
+                        platform,
+                        content_style,
+                        include_photos,
+                        include_hashtags,
+                        include_call_to_action,
+                        include_questions
+                    )
+                    
+                    # Display the generated content in a clean container
+                    with st.container():
+                        # Create columns for content and image
+                        if include_photos:
+                            col1, col2 = st.columns([3, 2])
+                            
+                            with col1:
+                                st.markdown(f"**{post_content['headline']}**")
+                                st.write(post_content['body'])
+                                
+                                if include_hashtags and 'hashtags' in post_content:
+                                    st.write(post_content['hashtags'])
+                            
+                            with col2:
+                                # Generate an image for this post
+                                try:
+                                    platform_id = platform.lower()
+                                    image_style = image_theme.lower()
+                                    
+                                    # Create a consistent ID for caching
+                                    image_id = f"{platform_id}_{property_details['property_id']}_{image_style}"
+                                    
+                                    # Generate social media image
+                                    social_image = image_generator.generate_social_media_image(
+                                        platform=platform_id,
+                                        property_details=property_details,
+                                        theme=image_style,
+                                        include_price=include_property_details,
+                                        include_features=include_property_details
+                                    )
+                                    
+                                    # Display the image
+                                    if social_image:
+                                        st.image(social_image, caption=f"Generated {platform} Image")
+                                    
+                                except Exception as e:
+                                    st.error(f"Error generating image: {str(e)}")
+                                    st.info(post_content.get('photo_suggestion', "Consider using a high-quality image of the property"))
+                        else:
+                            # Just show content without image
+                            st.markdown(f"**{post_content['headline']}**")
+                            st.write(post_content['body'])
+                            
+                            if include_hashtags and 'hashtags' in post_content:
+                                st.write(post_content['hashtags'])
+                            
+                            if 'photo_suggestion' in post_content:
+                                st.info(post_content['photo_suggestion'])
+                        
+                        # Engagement metrics
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("Est. Reach", f"{random.randint(500, 5000):,}")
+                        
+                        with col2:
+                            st.metric("Est. Engagement", f"{random.randint(1, 10)}%")
+                        
+                        with col3:
+                            if platform == "Facebook" or platform == "Instagram":
+                                metric_name = "Est. Likes"
+                            elif platform == "Twitter":
+                                metric_name = "Est. Retweets"
+                            elif platform == "TikTok":
+                                metric_name = "Est. Views"
+                            elif platform == "Google":
+                                metric_name = "Est. Clicks"
+                            else:  # LinkedIn
+                                metric_name = "Est. Interactions"
+                            
+                            st.metric(metric_name, f"{random.randint(10, 200)}")
+                    
+                    if versions > 1 and version < versions - 1:
+                        st.markdown("---")
+                
+                # Add CTA buttons for posting or scheduling
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button(f"Post Now to {platform}", key=f"post_{platform}"):
+                        st.success(f"Your content would be posted to {platform}!")
+                with col2:
+                    if st.button(f"Save for {platform}", key=f"save_{platform}"):
+                        st.success(f"Content saved for {platform}!")
+                
+                st.markdown("---")
+            
+            # Platform-specific best practices
+            st.subheader("Platform Best Practices")
+            
+            platform_tips = {
+                "Facebook": "• Posts with images get 2.3x more engagement\n• Optimal post length: 40-80 characters\n• Best time to post: Mid-day during weekdays",
+                "Instagram": "• Use 5-10 relevant hashtags\n• Square images perform best\n• Engage with comments within 60 minutes of posting",
+                "Twitter": "• Keep tweets under 100 characters for best engagement\n• Include one or two hashtags maximum\n• Tweet during commuting hours",
+                "LinkedIn": "• Professional tone performs best\n• Include industry insights\n• Post during business hours",
+                "TikTok": "• Videos 15-60 seconds perform best\n• Use trending sounds and effects\n• Post consistently at similar times",
+                "Google": "• Focus on search-friendly descriptions\n• Include high-quality images\n• Emphasize location details"
+            }
+            
+            for platform in platforms:
+                st.info(f"**{platform} Tips:**\n{platform_tips.get(platform, '')}")
+            
+            # Best posting times
+            st.subheader("Recommended Posting Schedule")
+            
+            for platform in platforms:
+                platform_id = platform.lower()
+                best_times = social_media_manager.get_best_posting_times(platform_id)
+                
+                with st.expander(f"{platform} Optimal Posting Times"):
+                    for day, times in best_times.items():
+                        st.write(f"**{day}:** {', '.join(times)}")
+                        
+            # Content calendar option
+            st.subheader("Content Calendar")
+            if st.button("Create Content Calendar"):
+                st.success("A content calendar has been created with these posts")
+                st.info("You can access and edit your content calendar in the Settings page")
 
 def show_email_campaign_generator(data):
     st.subheader("Email Campaign Generator")
     
     st.markdown("""
     Create targeted email campaigns for different segments of your client base.
-    Our AI generates personalized email content that drives engagement and conversions.
+    Our AI generates personalized email content with images that drives engagement and conversions.
     """)
+    
+    # Check if email provider is configured
+    provider_status = email_service.check_email_credentials()
+    available_providers = email_service.get_available_email_providers()
+    
+    if not available_providers:
+        st.warning("No email service providers are configured. Your generated emails will be saved as templates but cannot be sent.")
+        st.info("To configure email providers, visit the Settings page and add your email service credentials.")
     
     # Campaign type selection
     campaign_type = st.selectbox(
@@ -301,19 +458,23 @@ def show_email_campaign_generator(data):
         ]
     )
     
+    # Email list selection
+    email_lists = email_service.get_email_lists()
+    
+    # Display the lists with their counts
+    list_options = [f"{list_info['name']} ({list_info['count']} recipients)" for list_info in email_lists]
+    list_ids = [list_info['id'] for list_info in email_lists]
+    
     # Recipient segment
-    recipient_segment = st.selectbox(
+    selected_list_index = st.selectbox(
         "Recipient Segment",
-        options=[
-            "All Clients",
-            "Past Buyers",
-            "Current Sellers",
-            "Potential Buyers",
-            "Investors",
-            "First-time Homebuyers",
-            "Luxury Market Clients"
-        ]
+        options=range(len(list_options)),
+        format_func=lambda i: list_options[i]
     )
+    
+    recipient_segment = email_lists[selected_list_index]['name']
+    selected_list_id = list_ids[selected_list_index]
+    num_recipients = email_lists[selected_list_index]['count']
     
     # Property selection (for property-specific campaigns)
     if campaign_type in ["New Listing Announcement", "Open House Invitation", "Price Reduction Alert", "Just Sold Announcement"]:
@@ -329,88 +490,69 @@ def show_email_campaign_generator(data):
         property_details = None
     
     # Email customization
-    st.subheader("Email Customization")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        sender_name = st.text_input("Sender Name", value="Your Name")
-        email_subject_prefix = st.text_input("Email Subject Prefix", value="")
-    
-    with col2:
-        include_personal_note = st.checkbox("Include Personal Note", value=True)
-        include_market_stats = st.checkbox("Include Market Statistics", value=True)
-    
-    # Additional content
-    include_testimonials = st.checkbox("Include Client Testimonials", value=True)
-    
-    # For open house, we need date and time
-    if campaign_type == "Open House Invitation":
-        st.subheader("Open House Details")
+    with st.expander("Email Design and Content", expanded=True):
+        st.subheader("Email Customization")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            open_house_date = st.date_input("Open House Date", datetime.now() + timedelta(days=7))
-        
-        with col2:
-            open_house_time = st.time_input("Open House Time")
-    
-    # Generate button
-    if st.button("Generate Email Campaign"):
-        # Generate email content
-        email_content = generate_email_campaign(
-            campaign_type,
-            recipient_segment,
-            property_details,
-            sender_name,
-            email_subject_prefix,
-            include_personal_note,
-            include_market_stats,
-            include_testimonials
-        )
-        
-        # Add open house details if applicable
-        if campaign_type == "Open House Invitation":
-            open_house_datetime = f"{open_house_date.strftime('%A, %B %d, %Y')} at {open_house_time.strftime('%I:%M %p')}"
-            email_content['body'] = email_content['body'].replace("[OPEN_HOUSE_DATE_TIME]", open_house_datetime)
-        
-        # Display the generated email
-        st.subheader("Generated Email")
-        
-        # Email preview container
-        with st.container():
-            st.markdown(f"**From:** {sender_name}")
-            st.markdown(f"**To:** {recipient_segment}")
-            st.markdown(f"**Subject:** {email_content['subject']}")
-            st.markdown("---")
-            st.markdown(email_content['body'], unsafe_allow_html=True)
-        
-        # Email performance metrics
-        st.subheader("Projected Email Performance")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Est. Open Rate", f"{random.randint(15, 35)}%")
-        
-        with col2:
-            st.metric("Est. Click Rate", f"{random.randint(2, 10)}%")
-        
-        with col3:
-            st.metric("Est. Response Rate", f"{random.randint(1, 5)}%")
-        
-        with col4:
-            st.metric("Est. Unsubscribe Rate", f"{random.uniform(0.1, 0.5):.1f}%")
-        
-        # Send options
-        st.subheader("Sending Options")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            num_recipients = st.number_input("Number of Recipients", min_value=1, value=100)
+            sender_name = st.text_input("Sender Name", value="Your Name")
+            email_subject_prefix = st.text_input("Email Subject Prefix", value="")
             
+            # Email design options
+            email_theme = st.selectbox(
+                "Email Theme",
+                options=["Professional", "Luxury", "Modern", "Warm", "Minimalist"]
+            )
+        
+        with col2:
+            include_personal_note = st.checkbox("Include Personal Note", value=True)
+            include_market_stats = st.checkbox("Include Market Statistics", value=True)
+            include_testimonials = st.checkbox("Include Client Testimonials", value=True)
+            include_images = st.checkbox("Include Images", value=True)
+        
+        # For open house, we need date and time
+        if campaign_type == "Open House Invitation":
+            st.subheader("Open House Details")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                open_house_date = st.date_input("Open House Date", datetime.now() + timedelta(days=7))
+            
+            with col2:
+                open_house_time = st.time_input("Open House Time")
+                
+            # Virtual open house option
+            virtual_open_house = st.checkbox("Include Virtual Open House Option", value=False)
+            
+            if virtual_open_house:
+                virtual_platform = st.selectbox(
+                    "Virtual Platform",
+                    options=["Zoom", "Google Meet", "Microsoft Teams", "Other"]
+                )
+                virtual_link = st.text_input("Virtual Meeting Link", value="")
+    
+    # Delivery options
+    with st.expander("Delivery Options", expanded=True):
+        st.subheader("Email Delivery")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Email service provider selection (if available)
+            if available_providers:
+                provider_options = [provider['name'] for provider in available_providers]
+                provider_ids = [provider['id'] for provider in available_providers]
+                selected_provider_index = st.selectbox(
+                    "Email Service Provider",
+                    options=range(len(provider_options)),
+                    format_func=lambda i: provider_options[i]
+                )
+                selected_provider = provider_ids[selected_provider_index]
+            else:
+                selected_provider = None
+                
             # Schedule send
             schedule_send = st.checkbox("Schedule Send", value=False)
             
@@ -419,81 +561,243 @@ def show_email_campaign_generator(data):
                 send_time = st.time_input("Send Time", datetime.now().time())
         
         with col2:
-            st.write("**A/B Testing Options:**")
+            # A/B Testing
             ab_testing = st.checkbox("Enable A/B Testing", value=False)
             
             if ab_testing:
                 test_variable = st.selectbox(
                     "Test Variable",
-                    options=["Subject Line", "Sender Name", "Content", "Call to Action"]
+                    options=["Subject Line", "Send Time", "Content", "Call to Action"]
                 )
                 
                 test_size = st.slider("Test Size (% of Recipients)", 10, 50, 20)
-        
-        # Send button
-        if st.button("Prepare to Send"):
-            if schedule_send:
-                st.success(f"Email campaign prepared and scheduled for {send_date.strftime('%B %d, %Y')} at {send_time.strftime('%I:%M %p')}")
-            else:
-                st.success(f"Email campaign prepared and ready to send to {num_recipients} recipients")
+                
+                if test_variable == "Subject Line":
+                    alt_subject = st.text_input("Alternative Subject Line")
+                elif test_variable == "Content":
+                    st.info("The system will generate two versions of your email content")
+                elif test_variable == "Call to Action":
+                    alt_cta = st.text_input("Alternative Call to Action")
+    
+    # Generate button
+    if st.button("Generate Email Campaign"):
+        with st.spinner("Generating personalized email campaign..."):
+            # Generate email content
+            email_content = generate_email_campaign(
+                campaign_type,
+                recipient_segment,
+                property_details,
+                sender_name,
+                email_subject_prefix,
+                include_personal_note,
+                include_market_stats,
+                include_testimonials
+            )
+            
+            # Add open house details if applicable
+            if campaign_type == "Open House Invitation":
+                open_house_datetime = f"{open_house_date.strftime('%A, %B %d, %Y')} at {open_house_time.strftime('%I:%M %p')}"
+                email_content['body'] = email_content['body'].replace("[OPEN_HOUSE_DATE_TIME]", open_house_datetime)
+                
+                # Add virtual open house details if selected
+                if virtual_open_house and virtual_link:
+                    virtual_details = f"""
+                    <p style="margin-top: 15px;"><strong>Virtual Open House Option:</strong></p>
+                    <p>Can't make it in person? Join us virtually on {virtual_platform} at the same time!</p>
+                    <p><a href="{virtual_link}" style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px;">Join Virtual Open House</a></p>
+                    """
+                    email_content['body'] = email_content['body'].replace("</div>", f"{virtual_details}</div>")
+            
+            # Generate and add header image if requested
+            if include_images:
+                try:
+                    # Generate header image
+                    header_image = image_generator.generate_email_header_image(
+                        campaign_type=campaign_type,
+                        property_details=property_details,
+                        theme=email_theme.lower()
+                    )
+                    
+                    # Convert image to base64 for embedding
+                    image_base64 = image_generator.image_to_base64(header_image)
+                    
+                    # Create image HTML and add to email body
+                    image_html = f'<img src="{image_base64}" style="width: 100%; max-width: 600px; height: auto; margin-bottom: 20px;" alt="Email Header">'
+                    
+                    # Add image to the top of the email
+                    email_body_parts = email_content['body'].split('<div', 1)
+                    if len(email_body_parts) > 1:
+                        email_content['body'] = f'{email_body_parts[0]}{image_html}<div{email_body_parts[1]}'
+                    else:
+                        email_content['body'] = f'{image_html}{email_content["body"]}'
+                    
+                except Exception as e:
+                    st.warning(f"Could not generate email header image: {str(e)}")
+            
+            # Display the generated email
+            st.subheader("Generated Email")
+            
+            # Email preview container with better styling
+            with st.container():
+                st.info("Email Preview")
+                preview_html = f"""
+                <div style="border: 1px solid #e0e0e0; border-radius: 4px; padding: 15px; max-width: 700px;">
+                    <div style="border-bottom: 1px solid #e0e0e0; padding-bottom: 10px; margin-bottom: 15px;">
+                        <strong>From:</strong> {sender_name}<br>
+                        <strong>To:</strong> {recipient_segment}<br>
+                        <strong>Subject:</strong> {email_content['subject']}
+                    </div>
+                    <div>
+                        {email_content['body']}
+                    </div>
+                </div>
+                """
+                st.markdown(preview_html, unsafe_allow_html=True)
+            
+            # Email performance metrics
+            st.subheader("Projected Email Performance")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                open_rate = random.randint(15, 35)
+                st.metric("Est. Open Rate", f"{open_rate}%")
+            
+            with col2:
+                click_rate = random.randint(2, 10)
+                st.metric("Est. Click Rate", f"{click_rate}%")
+            
+            with col3:
+                response_rate = random.randint(1, 5)
+                st.metric("Est. Response Rate", f"{response_rate}%")
+            
+            with col4:
+                unsubscribe_rate = random.uniform(0.1, 0.5)
+                st.metric("Est. Unsubscribe Rate", f"{unsubscribe_rate:.1f}%")
+            
+            # Campaign preview
+            st.subheader("Campaign Summary")
+            
+            # Calculate estimated metrics
+            est_opens = int(num_recipients * (open_rate / 100))
+            est_clicks = int(est_opens * (click_rate / 100))
+            est_responses = int(est_clicks * (response_rate / 100))
+            est_unsubscribes = int(num_recipients * (unsubscribe_rate / 100))
+            
+            # Display stats
+            st.markdown(f"""
+            **Campaign Name:** {campaign_type} - {datetime.now().strftime("%b %d, %Y")}  
+            **Recipients:** {num_recipients} ({recipient_segment})  
+            **Estimated Opens:** {est_opens}  
+            **Estimated Clicks:** {est_clicks}  
+            **Estimated Responses:** {est_responses}  
+            **Estimated Unsubscribes:** {est_unsubscribes}  
+            """)
+            
+            # Save and send options
+            st.subheader("Save and Send")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Save as template
+                if st.button("Save as Template"):
+                    template_name = f"{campaign_type} - {datetime.now().strftime('%b %d, %Y')}"
+                    
+                    # In a real implementation, this would save to a file or database
+                    st.success(f"Email template '{template_name}' saved!")
+                    
+                    # Show download option
+                    st.markdown("### Download HTML")
+                    html_download = email_content['body']
+                    
+                    # Encode HTML for download
+                    b64 = base64.b64encode(html_download.encode()).decode()
+                    href = f'<a href="data:text/html;base64,{b64}" download="email_template.html">Download HTML Template</a>'
+                    st.markdown(href, unsafe_allow_html=True)
+            
+            with col2:
+                # Send options
+                if selected_provider:
+                    sender_email = st.text_input("Sender Email Address", value="you@example.com")
+                    
+                    # Send test email
+                    test_recipient = st.text_input("Send Test Email To")
+                    
+                    if test_recipient and st.button("Send Test Email"):
+                        st.success(f"Test email would be sent to {test_recipient}")
+                        
+                        # Display what would happen in production
+                        st.code(f"""
+                        email_service.send_email(
+                            provider="{selected_provider}",
+                            to_emails=["{test_recipient}"],
+                            subject="{email_content['subject']}",
+                            html_content="{email_content['body'][:50]}...",
+                            from_email="{sender_email}",
+                            from_name="{sender_name}"
+                        )
+                        """)
+                    
+                    # Send/schedule the campaign
+                    if st.button("Send Campaign Now"):
+                        st.success(f"Campaign would be sent to {num_recipients} recipients via {selected_provider}")
+                    
+                    elif schedule_send and st.button("Schedule Campaign"):
+                        schedule_time = datetime.combine(send_date, send_time)
+                        st.success(f"Campaign scheduled for {schedule_time.strftime('%B %d, %Y at %I:%M %p')}")
+                else:
+                    st.warning("Configure an email service provider in Settings to enable sending")
+                    
+                    if st.button("Save Campaign"):
+                        st.success("Campaign saved as draft")
+                        st.info("You can manually send this campaign after configuring an email provider")
 
 def show_ad_performance_analytics():
     st.subheader("Marketing Performance Analytics")
     
     st.markdown("""
-    Track and analyze the performance of your real estate marketing campaigns.
-    Optimize your marketing strategy based on data-driven insights.
+    Track and analyze the performance of your real estate marketing campaigns across multiple platforms.
+    Optimize your marketing strategy based on data-driven insights from all your digital advertising channels.
     """)
     
-    # Generate sample marketing performance data
-    if 'marketing_data' not in st.session_state:
-        st.session_state.marketing_data = generate_marketing_data()
+    # Check platform credentials
+    platform_status = social_media_manager.check_platform_credentials()
+    available_platforms = social_media_manager.get_available_platforms()
     
-    marketing_data = st.session_state.marketing_data
+    # Get ad campaign data across platforms
+    campaign_data = social_media_manager.get_ad_campaign_performance()
     
-    # Filter options
-    col1, col2, col3 = st.columns(3)
+    # Create tabs for different analytics views
+    tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Platform Comparison", "Campaign Details", "Recommendations"])
     
-    with col1:
-        date_range = st.selectbox(
-            "Date Range",
-            options=["Last 7 Days", "Last 30 Days", "Last 90 Days", "Year to Date", "All Time"],
-            index=1
-        )
-    
-    with col2:
-        channel_filter = st.multiselect(
-            "Marketing Channels",
-            options=marketing_data['channel'].unique(),
-            default=marketing_data['channel'].unique()
-        )
-    
-    with col3:
-        metric_view = st.selectbox(
-            "Primary Metric",
-            options=["Impressions", "Clicks", "Inquiries", "Cost", "ROI"]
-        )
-    
-    # Filter data based on selections
-    filtered_marketing = marketing_data.copy()
-    
-    if channel_filter:
-        filtered_marketing = filtered_marketing[filtered_marketing['channel'].isin(channel_filter)]
-    
-    # Apply date filter
-    today = datetime.now()
-    if date_range == "Last 7 Days":
-        start_date = today - timedelta(days=7)
-        filtered_marketing = filtered_marketing[filtered_marketing['date'] >= start_date]
-    elif date_range == "Last 30 Days":
-        start_date = today - timedelta(days=30)
-        filtered_marketing = filtered_marketing[filtered_marketing['date'] >= start_date]
-    elif date_range == "Last 90 Days":
-        start_date = today - timedelta(days=90)
-        filtered_marketing = filtered_marketing[filtered_marketing['date'] >= start_date]
-    elif date_range == "Year to Date":
-        start_date = datetime(today.year, 1, 1)
-        filtered_marketing = filtered_marketing[filtered_marketing['date'] >= start_date]
+    with tab1:
+        # Overview tab
+        st.subheader("Performance Overview")
+        
+        # Filter options
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            date_range = st.selectbox(
+                "Date Range",
+                options=["Last 7 Days", "Last 30 Days", "Last 90 Days", "Year to Date", "All Time"],
+                index=1
+            )
+        
+        with col2:
+            platforms = st.multiselect(
+                "Platforms",
+                options=campaign_data['platform'].unique(),
+                default=campaign_data['platform'].unique()
+            )
+        
+        with col3:
+            metrics = st.multiselect(
+                "Key Metrics",
+                options=["Impressions", "Clicks", "CTR", "Conversions", "Conversion Rate", "Cost", "ROI"],
+                default=["Impressions", "Clicks", "Conversions", "ROI"]
+            )
     
     # Key performance metrics
     st.subheader("Key Performance Metrics")
