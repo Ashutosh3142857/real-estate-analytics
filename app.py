@@ -4,7 +4,7 @@ import numpy as np
 from utils.data_processing import load_sample_data
 from utils.visualization import plot_market_trends, plot_property_distribution, create_property_map
 from utils.real_estate_api import search_properties_by_location, search_properties_zillow, get_location_suggestions
-from streamlit_folium import folium_static
+from streamlit_folium import st_folium
 import os
 from datetime import datetime
 
@@ -233,7 +233,7 @@ if page == "Dashboard":
         # Property Map Visualization
         st.subheader("Property Map")
         property_map = create_property_map(filtered_data)
-        folium_static(property_map, width=1200, height=600)
+        st_folium(property_map, width=1200, height=600, returned_objects=[])
         
         # Recent listings
         st.subheader("Recent Listings")

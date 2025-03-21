@@ -3,7 +3,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 import folium
-from streamlit_folium import folium_static
+from streamlit_folium import st_folium
 from utils.data_processing import get_market_trends
 
 def plot_market_trends(df):
@@ -260,7 +260,7 @@ def create_property_map(df):
         df: DataFrame with latitude, longitude, and property information
         
     Returns:
-        folium.Map: A map object that can be displayed with folium_static
+        folium.Map: A map object that can be displayed with st_folium
     """
     if df.empty or 'latitude' not in df.columns or 'longitude' not in df.columns:
         # Return an empty map centered on the US if no data
