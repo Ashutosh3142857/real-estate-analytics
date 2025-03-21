@@ -263,15 +263,15 @@ def create_property_map(df):
         folium.Map: A map object that can be displayed with st_folium
     """
     if df.empty or 'latitude' not in df.columns or 'longitude' not in df.columns:
-        # Return an empty map centered on the US if no data
-        return folium.Map(location=[37.0902, -95.7129], zoom_start=4)
+        # Return an empty map centered on the world if no data
+        return folium.Map(location=[20, 0], zoom_start=2)
     
     # Remove rows with missing lat/long
     map_data = df.dropna(subset=['latitude', 'longitude']).copy()
     
     if map_data.empty:
-        # Return an empty map centered on the US if no valid lat/long
-        return folium.Map(location=[37.0902, -95.7129], zoom_start=4)
+        # Return an empty map centered on the world if no valid lat/long
+        return folium.Map(location=[20, 0], zoom_start=2)
     
     # Determine map center (average of lat/long)
     center_lat = map_data['latitude'].mean()
@@ -283,9 +283,21 @@ def create_property_map(df):
     # Add property markers to the map
     for _, row in map_data.iterrows():
         # Create popup content with property details
+        # Extract country from city if present (format: "City, Country")
+        city_display = row['city']
+        state_display = row.get('state', '')
+        
+        # Handle international cities with format "City, Country"
+        if ',' in city_display:
+            city_parts = city_display.split(',')
+            city_display = city_parts[0].strip()
+            # If we have a country in the city field, use it instead of state
+            if len(city_parts) > 1:
+                state_display = city_parts[1].strip()
+        
         popup_content = f"""
         <b>{row['address']}</b><br>
-        {row['city']}, {row.get('state', '')}<br>
+        {city_display}, {state_display}<br>
         <b>${row['price']:,.0f}</b><br>
         {row['bedrooms']} bed, {row['bathrooms']} bath<br>
         {row['sqft']} sqft<br>

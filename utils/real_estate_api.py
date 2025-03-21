@@ -26,12 +26,20 @@ def search_properties_by_location(location, limit=10):
     """
     Search for properties by location (city, zip code, address, etc.)
     Returns a pandas DataFrame with property data
+    Supports international searches with location format: 'City, Country'
     """
     headers = get_rapidapi_headers()
     
     if not headers:
         # If no API key, return an empty DataFrame
         return pd.DataFrame()
+    
+    # Update headers for the appropriate host
+    if "," in location and any(country in location for country in 
+                             ["UK", "France", "Germany", "Japan", "China", "Australia", 
+                              "Brazil", "Canada", "Mexico", "India", "Singapore"]):
+        # Use international API host for non-US locations
+        headers["X-RapidAPI-Host"] = "realty-mole-property-api.p.rapidapi.com"
     
     params = {
         "address": location,
@@ -91,6 +99,7 @@ def search_properties_zillow(location, limit=10):
     """
     Search for properties using the Zillow-like API (realty-in-us)
     Returns a pandas DataFrame with property data
+    Supports international searches with location format: 'City, Country'
     """
     api_key = os.environ.get("RAPIDAPI_KEY")
     
@@ -103,12 +112,28 @@ def search_properties_zillow(location, limit=10):
         "X-RapidAPI-Host": "realty-in-us.p.rapidapi.com"
     }
     
+    # Parse location to handle international searches
+    location_parts = location.split(',')
+    city = location_parts[0].strip()
+    
+    # Extract country or state_code if provided
+    country = ""
+    state_code = ""
+    if len(location_parts) > 1:
+        country_or_state = location_parts[1].strip()
+        # Check if it's a 2-letter state code
+        if len(country_or_state) == 2 and country_or_state.isalpha():
+            state_code = country_or_state
+        else:
+            country = country_or_state
+    
     params = {
-        "city": location,
+        "city": city,
         "limit": limit,
         "offset": "0",
-        "state_code": "",
-        "sort": "relevance"
+        "state_code": state_code,
+        "sort": "relevance",
+        "country": country
     }
     
     try:
@@ -187,7 +212,7 @@ def add_historical_prices(df):
 def get_location_suggestions(query):
     """
     Get location suggestions based on user input
-    Returns a list of location suggestions
+    Returns a list of location suggestions including international locations
     """
     api_key = os.environ.get("RAPIDAPI_KEY")
     
@@ -204,23 +229,53 @@ def get_location_suggestions(query):
     }
     
     try:
+        # First try the US API for location suggestions
         response = requests.get(
             "https://realty-in-us.p.rapidapi.com/locations/auto-complete",
             headers=headers, 
             params=params
         )
         
+        suggestions = []
+        
         if response.status_code == 200:
             data = response.json()
             
-            suggestions = []
             if 'autocomplete' in data:
                 for item in data['autocomplete']:
                     suggestions.append(item.get('city', '') + ', ' + item.get('state_code', ''))
+        
+        # Supplement with global major cities if the query might be international
+        if len(query) >= 3 and (len(suggestions) < 5 or any(
+                country in query.lower() for country in 
+                ["uk", "france", "germany", "japan", "china", "australia", "canada", 
+                 "brazil", "mexico", "india", "singapore", "europe", "asia", "africa"]
+            )):
+            # Major global cities by continent
+            global_cities = {
+                "Europe": ["London, UK", "Paris, France", "Berlin, Germany", "Rome, Italy", 
+                          "Madrid, Spain", "Amsterdam, Netherlands", "Vienna, Austria", 
+                          "Moscow, Russia", "Stockholm, Sweden", "Athens, Greece"],
+                "Asia": ["Tokyo, Japan", "Shanghai, China", "Singapore", "Seoul, South Korea", 
+                        "Mumbai, India", "Bangkok, Thailand", "Dubai, UAE", 
+                        "Hong Kong", "Beijing, China", "Istanbul, Turkey"],
+                "Oceania": ["Sydney, Australia", "Melbourne, Australia", "Auckland, New Zealand", 
+                           "Wellington, New Zealand", "Brisbane, Australia", "Perth, Australia"],
+                "South America": ["Rio de Janeiro, Brazil", "Buenos Aires, Argentina", "Lima, Peru", 
+                                 "Santiago, Chile", "Bogota, Colombia", "Sao Paulo, Brazil"],
+                "Africa": ["Cape Town, South Africa", "Nairobi, Kenya", "Cairo, Egypt", 
+                          "Johannesburg, South Africa", "Casablanca, Morocco", "Lagos, Nigeria"],
+                "North America": ["Toronto, Canada", "Vancouver, Canada", "Montreal, Canada", 
+                                 "Mexico City, Mexico", "Cancun, Mexico", "Ottawa, Canada"]
+            }
             
-            return suggestions
-        else:
-            return []
+            # Add matching global cities to suggestions
+            for continent, cities in global_cities.items():
+                for city in cities:
+                    if query.lower() in city.lower() or query.lower() in continent.lower():
+                        suggestions.append(city)
+            
+        return suggestions
     
     except Exception:
         return []

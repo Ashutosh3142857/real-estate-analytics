@@ -12,18 +12,37 @@ def load_sample_data():
         # In a real application, this would be replaced with actual API calls or database queries
         # For demonstration, we'll create a structured dataset that mimics real estate data
         
-        # Define cities with realistic price ranges
+        # Define global cities with realistic price ranges
         cities = {
-            'New York': {'min_price': 500000, 'max_price': 5000000, 'price_sqft': 1000},
-            'Los Angeles': {'min_price': 400000, 'max_price': 3000000, 'price_sqft': 800},
-            'Chicago': {'min_price': 200000, 'max_price': 1500000, 'price_sqft': 400},
-            'Houston': {'min_price': 150000, 'max_price': 1000000, 'price_sqft': 200},
-            'Phoenix': {'min_price': 200000, 'max_price': 800000, 'price_sqft': 250},
-            'Philadelphia': {'min_price': 180000, 'max_price': 900000, 'price_sqft': 300},
-            'San Antonio': {'min_price': 150000, 'max_price': 700000, 'price_sqft': 180},
-            'San Diego': {'min_price': 400000, 'max_price': 2000000, 'price_sqft': 650},
-            'Dallas': {'min_price': 200000, 'max_price': 1200000, 'price_sqft': 220},
-            'San Jose': {'min_price': 600000, 'max_price': 2500000, 'price_sqft': 900}
+            # North America
+            'New York, USA': {'min_price': 500000, 'max_price': 5000000, 'price_sqft': 1000, 'lat_range': (40.5, 40.9), 'long_range': (-74.1, -73.7)},
+            'Los Angeles, USA': {'min_price': 400000, 'max_price': 3000000, 'price_sqft': 800, 'lat_range': (33.7, 34.2), 'long_range': (-118.5, -118.1)},
+            'Toronto, Canada': {'min_price': 600000, 'max_price': 2000000, 'price_sqft': 850, 'lat_range': (43.6, 43.8), 'long_range': (-79.5, -79.2)},
+            'Mexico City, Mexico': {'min_price': 150000, 'max_price': 900000, 'price_sqft': 250, 'lat_range': (19.3, 19.5), 'long_range': (-99.2, -99.0)},
+            
+            # Europe
+            'London, UK': {'min_price': 800000, 'max_price': 8000000, 'price_sqft': 1500, 'lat_range': (51.4, 51.6), 'long_range': (-0.2, 0.1)},
+            'Paris, France': {'min_price': 600000, 'max_price': 5000000, 'price_sqft': 1200, 'lat_range': (48.8, 49.0), 'long_range': (2.2, 2.4)},
+            'Berlin, Germany': {'min_price': 400000, 'max_price': 2000000, 'price_sqft': 600, 'lat_range': (52.4, 52.6), 'long_range': (13.3, 13.5)},
+            'Rome, Italy': {'min_price': 350000, 'max_price': 1800000, 'price_sqft': 700, 'lat_range': (41.8, 42.0), 'long_range': (12.4, 12.6)},
+            
+            # Asia
+            'Tokyo, Japan': {'min_price': 500000, 'max_price': 4000000, 'price_sqft': 1100, 'lat_range': (35.6, 35.8), 'long_range': (139.6, 139.8)},
+            'Shanghai, China': {'min_price': 400000, 'max_price': 3000000, 'price_sqft': 800, 'lat_range': (31.1, 31.3), 'long_range': (121.3, 121.5)},
+            'Singapore': {'min_price': 700000, 'max_price': 5000000, 'price_sqft': 1300, 'lat_range': (1.2, 1.4), 'long_range': (103.8, 104.0)},
+            'Dubai, UAE': {'min_price': 300000, 'max_price': 10000000, 'price_sqft': 600, 'lat_range': (25.0, 25.3), 'long_range': (55.1, 55.4)},
+            
+            # Australia/Oceania
+            'Sydney, Australia': {'min_price': 700000, 'max_price': 3000000, 'price_sqft': 950, 'lat_range': (-34.0, -33.8), 'long_range': (151.1, 151.3)},
+            'Auckland, New Zealand': {'min_price': 500000, 'max_price': 2000000, 'price_sqft': 750, 'lat_range': (-37.0, -36.8), 'long_range': (174.7, 174.9)},
+            
+            # South America
+            'Rio de Janeiro, Brazil': {'min_price': 200000, 'max_price': 1500000, 'price_sqft': 400, 'lat_range': (-23.0, -22.8), 'long_range': (-43.3, -43.1)},
+            'Buenos Aires, Argentina': {'min_price': 150000, 'max_price': 1000000, 'price_sqft': 350, 'lat_range': (-34.7, -34.5), 'long_range': (-58.5, -58.3)},
+            
+            # Africa
+            'Cape Town, South Africa': {'min_price': 200000, 'max_price': 1500000, 'price_sqft': 450, 'lat_range': (-34.0, -33.8), 'long_range': (18.3, 18.5)},
+            'Nairobi, Kenya': {'min_price': 100000, 'max_price': 800000, 'price_sqft': 300, 'lat_range': (-1.3, -1.2), 'long_range': (36.7, 36.9)}
         }
         
         property_types = ['Single Family', 'Condo', 'Townhouse', 'Multi-Family']
@@ -84,9 +103,11 @@ def load_sample_data():
             # Generate zip code (simplified)
             zip_code = f"{np.random.randint(10000, 99999)}"
             
-            # Generate lat/long coordinates (simplified approximation)
-            latitude = np.random.uniform(25.0, 48.0)
-            longitude = np.random.uniform(-125.0, -70.0)
+            # Generate lat/long coordinates based on city location
+            lat_range = city_data['lat_range']
+            long_range = city_data['long_range']
+            latitude = np.random.uniform(lat_range[0], lat_range[1])
+            longitude = np.random.uniform(long_range[0], long_range[1])
             
             # Market trend data (days on market)
             days_on_market = int(np.random.exponential(30))  # Exponential distribution with mean of 30 days
