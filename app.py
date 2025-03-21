@@ -4,10 +4,11 @@ import numpy as np
 from utils.data_processing import load_sample_data
 from utils.visualization import plot_market_trends, plot_property_distribution
 import os
+from datetime import datetime
 
 # Page configuration
 st.set_page_config(
-    page_title="Real Estate Analytics Dashboard",
+    page_title="AI-Powered Real Estate Analytics Dashboard",
     page_icon="🏠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -24,7 +25,8 @@ st.sidebar.image("https://img.icons8.com/fluency/96/000000/real-estate.png", wid
 # Navigation
 page = st.sidebar.radio(
     "Navigate to",
-    ["Dashboard", "Market Insights", "Property Analysis", "Investment Calculator"]
+    ["Dashboard", "Market Insights", "Property Analysis", "Property Valuation", 
+     "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator"]
 )
 
 # Filter section in sidebar
@@ -72,7 +74,7 @@ else:
 
 # Main content based on selected page
 if page == "Dashboard":
-    st.title("Real Estate Analytics Dashboard")
+    st.title("AI-Powered Real Estate Analytics Dashboard")
     
     st.markdown("""
     Welcome to the AI-powered Real Estate Analytics Dashboard. This platform provides comprehensive market insights and 
@@ -80,9 +82,11 @@ if page == "Dashboard":
     
     ### Featured Insights:
     - Market trends and price forecasting
-    - Property valuation analysis
-    - Investment opportunity calculator
-    - Neighborhood analytics
+    - Property valuation analysis and comparables
+    - Investment opportunity calculator with ROI metrics
+    - Neighborhood analytics and lifestyle matching
+    - Lead qualification and nurturing automation
+    - AI-powered marketing content generation
     """)
     
     # Dashboard metrics
@@ -100,6 +104,41 @@ if page == "Dashboard":
             avg_price_sqft = filtered_data['price'] / filtered_data['sqft']
             st.metric("Average Price/Sqft", f"${avg_price_sqft.mean():.2f}")
             
+        # Featured modules section
+        st.header("Featured AI-Powered Tools")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🔮 Property Valuation")
+            st.write("AI-driven property valuations with comparable analysis and future price predictions")
+            if st.button("Open Valuation Tool", key="valuation_btn"):
+                st.session_state.page = "Property Valuation"
+                st.rerun()
+        
+        with col2:
+            st.subheader("🤖 Lead Management")
+            st.write("AI-powered lead qualification, scoring, and automated nurturing campaigns")
+            if st.button("Open Lead Management", key="lead_btn"):
+                st.session_state.page = "Lead Management"
+                st.rerun()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🏡 Smart Property Matching")
+            st.write("Find ideal properties based on lifestyle, preferences, and investment potential")
+            if st.button("Open Property Matching", key="matching_btn"):
+                st.session_state.page = "Property Matching"
+                st.rerun()
+                
+        with col2:
+            st.subheader("📣 Marketing Generator")
+            st.write("AI-powered content creation for listings, social media, and email campaigns")
+            if st.button("Open Marketing Generator", key="marketing_btn"):
+                st.session_state.page = "Marketing Generator"
+                st.rerun()
+        
         # Market trends visualization
         st.subheader("Market Price Trends")
         fig = plot_market_trends(filtered_data)
@@ -129,11 +168,44 @@ elif page == "Property Analysis":
     from pages.property_analysis import show_property_analysis
     show_property_analysis(filtered_data)
 
+elif page == "Property Valuation":
+    # Import and run property valuation page
+    from pages.property_valuation import show_property_valuation
+    show_property_valuation()
+
+elif page == "Property Matching":
+    # Import and run property matching page
+    from pages.property_matching import show_property_matching
+    show_property_matching()
+
+elif page == "Lead Management":
+    # Import and run lead management page
+    from pages.lead_management import show_lead_management
+    show_lead_management()
+
 elif page == "Investment Calculator":
     # Import and run investment calculator page
     from pages.investment_calculator import show_investment_calculator
     show_investment_calculator()
+    
+elif page == "Marketing Generator":
+    # Import and run marketing generator page
+    from pages.marketing_generator import show_marketing_generator
+    show_marketing_generator()
 
 # Footer
 st.sidebar.markdown("---")
-st.sidebar.info("© 2023 Real Estate Analytics Dashboard")
+current_year = datetime.now().year
+st.sidebar.info(f"© {current_year} AI-Powered Real Estate Analytics Dashboard")
+
+# Add beta mode toggle
+st.sidebar.markdown("---")
+beta_mode = st.sidebar.checkbox("Enable Beta Features", value=False)
+
+if beta_mode:
+    st.sidebar.info("""
+    **Beta Features Enabled:**
+    - AI Chatbot for personalized property recommendations
+    - Hyperlocal market predictions
+    - Advanced investment risk analysis
+    """)
