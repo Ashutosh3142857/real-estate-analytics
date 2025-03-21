@@ -36,7 +36,7 @@ An advanced AI-powered real estate analytics platform designed to transform comp
 
 2. Install dependencies:
    ```
-   pip install -r requirements.txt
+   pip install -r dependencies.txt
    ```
 
 3. Set up environment variables:
