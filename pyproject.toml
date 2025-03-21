@@ -20,4 +20,5 @@ dependencies = [
     "pillow>=11.1.0",
     "twilio>=9.5.1",
     "beautifulsoup4>=4.13.3",
+    "google-search-results>=2.4.2",
 ]

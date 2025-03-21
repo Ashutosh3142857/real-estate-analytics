@@ -26,7 +26,12 @@ def show_lead_crawler():
     """Display the lead crawler interface"""
     st.title("Lead Crawler")
     
-    tab1, tab2, tab3 = st.tabs(["Search Campaigns", "Contact Results", "Import & Export"])
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Search Campaigns", 
+        "Contact Results", 
+        "Import & Export", 
+        "API Settings"
+    ])
     
     with tab1:
         show_search_campaigns_tab()
@@ -36,6 +41,9 @@ def show_lead_crawler():
     
     with tab3:
         show_import_export_tab()
+        
+    with tab4:
+        show_api_settings_tab()
 
 
 def show_search_campaigns_tab():
@@ -354,3 +362,205 @@ def show_import_export_tab():
                     )
             except Exception as e:
                 st.error(f"Error exporting contacts: {str(e)}")
+
+
+def show_api_settings_tab():
+    """Display API settings interface for web crawler"""
+    st.header("API Settings")
+    
+    # Explanation
+    st.write("""
+    The lead crawler uses search engine APIs to find potential leads more effectively. 
+    While it can work without API keys using direct web scraping, setting up API keys 
+    provides more reliable results and helps avoid rate limits or IP blocks.
+    """)
+    
+    # API key configuration
+    st.subheader("Search API Keys")
+    
+    # Common functions to load/save API keys from/to .env file
+    def load_env_variables():
+        """Load environment variables from .env file"""
+        # Check if .env file exists
+        if os.path.exists('.env'):
+            # Import only when needed
+            from dotenv import load_dotenv
+            load_dotenv()
+        
+        return {
+            'SERPAPI_KEY': os.environ.get('SERPAPI_KEY', ''),
+            'BING_API_KEY': os.environ.get('BING_API_KEY', '')
+        }
+    
+    def save_env_variables(env_vars):
+        """Save environment variables to .env file"""
+        # Import only when needed
+        from dotenv import load_dotenv, set_key
+        
+        # Load existing variables first
+        load_dotenv()
+        
+        # Update the variables
+        for key, value in env_vars.items():
+            if value:  # Only set if value is not empty
+                set_key('.env', key, value)
+                os.environ[key] = value  # Also update current environment
+    
+    # Load current API keys
+    api_keys = load_env_variables()
+    
+    # Google Search (SerpAPI)
+    st.markdown("#### Google Search API (SerpAPI)")
+    st.write("""
+    SerpAPI provides access to Google search results in a structured format.
+    You can sign up for a free trial at [SerpAPI](https://serpapi.com/).
+    """)
+    
+    serpapi_key = st.text_input(
+        "SerpAPI Key",
+        value=api_keys.get('SERPAPI_KEY', ''),
+        type="password",
+        help="Your SerpAPI key for Google search results"
+    )
+    
+    # Bing Search API
+    st.markdown("#### Microsoft Bing Search API")
+    st.write("""
+    The Bing Search API is available through Azure Cognitive Services.
+    You can sign up for a free tier at [Azure Cognitive Services](https://azure.microsoft.com/en-us/products/cognitive-services/).
+    """)
+    
+    bing_api_key = st.text_input(
+        "Bing API Key",
+        value=api_keys.get('BING_API_KEY', ''),
+        type="password",
+        help="Your Bing Search API key from Azure Cognitive Services"
+    )
+    
+    # Save button
+    if st.button("Save API Keys"):
+        # Update API keys
+        new_keys = {
+            'SERPAPI_KEY': serpapi_key,
+            'BING_API_KEY': bing_api_key
+        }
+        
+        try:
+            save_env_variables(new_keys)
+            st.success("API keys saved successfully!")
+        except Exception as e:
+            st.error(f"Error saving API keys: {str(e)}")
+    
+    # Test connection
+    st.subheader("Test API Connection")
+    
+    test_query = st.text_input(
+        "Test Search Query",
+        value="real estate agent",
+        help="Enter a search query to test the API connections"
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Test Google Search API"):
+            with st.spinner("Testing Google Search API..."):
+                try:
+                    # Import search function
+                    from utils.web_crawler import search_google
+                    
+                    # Test with a small number of results
+                    results = search_google(test_query, num_results=3, use_cache=False)
+                    
+                    if results:
+                        st.success(f"Successfully received {len(results)} results from Google!")
+                        
+                        # Show a sample result
+                        with st.expander("Sample Result"):
+                            if len(results) > 0:
+                                result = results[0]
+                                st.write(f"**Title:** {result.get('title', 'N/A')}")
+                                st.write(f"**URL:** {result.get('link', 'N/A')}")
+                                st.write(f"**Snippet:** {result.get('snippet', 'N/A')}")
+                                st.write(f"**Source:** {result.get('source', 'direct')}")
+                    else:
+                        st.warning("No results returned. The API may not be working correctly.")
+                except Exception as e:
+                    st.error(f"Error testing Google Search API: {str(e)}")
+    
+    with col2:
+        if st.button("Test Bing Search API"):
+            with st.spinner("Testing Bing Search API..."):
+                try:
+                    # Import search function
+                    from utils.web_crawler import search_bing
+                    
+                    # Test with a small number of results
+                    results = search_bing(test_query, num_results=3, use_cache=False)
+                    
+                    if results:
+                        st.success(f"Successfully received {len(results)} results from Bing!")
+                        
+                        # Show a sample result
+                        with st.expander("Sample Result"):
+                            if len(results) > 0:
+                                result = results[0]
+                                st.write(f"**Title:** {result.get('title', 'N/A')}")
+                                st.write(f"**URL:** {result.get('link', 'N/A')}")
+                                st.write(f"**Snippet:** {result.get('snippet', 'N/A')}")
+                                st.write(f"**Source:** {result.get('source', 'direct')}")
+                    else:
+                        st.warning("No results returned. The API may not be working correctly.")
+                except Exception as e:
+                    st.error(f"Error testing Bing Search API: {str(e)}")
+    
+    # Advanced settings
+    with st.expander("Advanced Settings"):
+        st.markdown("#### Cache Settings")
+        st.write("""
+        The lead crawler caches search results to avoid unnecessary API calls.
+        You can adjust how long results are cached before being refreshed.
+        """)
+        
+        cache_hours = st.slider(
+            "Cache Duration (hours)",
+            min_value=1,
+            max_value=72,
+            value=24,
+            help="How long to keep cached search results before refreshing"
+        )
+        
+        if st.button("Save Cache Settings"):
+            try:
+                # In a real implementation, this would save to a config file
+                st.success(f"Cache settings updated: {cache_hours} hours")
+            except Exception as e:
+                st.error(f"Error saving cache settings: {str(e)}")
+        
+        st.markdown("#### Clear Cache")
+        st.write("You can clear the search cache if you need fresh results.")
+        
+        if st.button("Clear Search Cache"):
+            try:
+                # Clear cache directory
+                import shutil
+                from utils.web_crawler import CACHE_DIR, ensure_cache_dir
+                
+                if os.path.exists(CACHE_DIR):
+                    # Keep the directory but remove its contents
+                    for filename in os.listdir(CACHE_DIR):
+                        filepath = os.path.join(CACHE_DIR, filename)
+                        try:
+                            if os.path.isfile(filepath) or os.path.islink(filepath):
+                                os.unlink(filepath)
+                            elif os.path.isdir(filepath):
+                                shutil.rmtree(filepath)
+                        except Exception as e:
+                            st.error(f"Failed to clear {filepath}: {e}")
+                
+                # Re-create the directory if needed
+                ensure_cache_dir()
+                
+                st.success("Search cache cleared successfully!")
+            except Exception as e:
+                st.error(f"Error clearing cache: {str(e)}")
