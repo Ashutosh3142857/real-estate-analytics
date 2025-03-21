@@ -1,12 +1,31 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import os
+import logging
+from datetime import datetime
+from dotenv import load_dotenv
+
+# Import utility modules
 from utils.data_processing import load_sample_data
 from utils.visualization import plot_market_trends, plot_property_distribution, create_property_map
 from utils.real_estate_api import search_properties_by_location, search_properties_zillow, get_location_suggestions
+from utils.database_init import initialize_database
+from utils.api_manager import check_api_keys
 from streamlit_folium import st_folium
-import os
-from datetime import datetime
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Initialize database if not already initialized
+try:
+    initialize_database()
+except Exception as e:
+    logger.error(f"Error initializing database: {str(e)}")
 
 # Page configuration
 st.set_page_config(
@@ -34,7 +53,7 @@ st.sidebar.image("https://img.icons8.com/fluency/96/000000/real-estate.png", wid
 page = st.sidebar.radio(
     "Navigate to",
     ["Dashboard", "Market Insights", "Market News", "Property Analysis", "Property Valuation", 
-     "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator"]
+     "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator", "Settings"]
 )
 
 # Filter section in sidebar
@@ -283,6 +302,11 @@ elif page == "Marketing Generator":
     # Import and run marketing generator page
     from pages.marketing_generator import show_marketing_generator
     show_marketing_generator()
+    
+elif page == "Settings":
+    # Import and run settings page
+    from pages.settings import show_settings
+    show_settings()
 
 # Footer
 st.sidebar.markdown("---")
