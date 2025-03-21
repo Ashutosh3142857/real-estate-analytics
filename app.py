@@ -52,7 +52,7 @@ st.sidebar.image("https://img.icons8.com/fluency/96/000000/real-estate.png", wid
 # Navigation
 page = st.sidebar.radio(
     "Navigate to",
-    ["Dashboard", "Market Insights", "Indian Market", "Market News", "Property Analysis", "Property Valuation", 
+    ["Dashboard", "Market Insights", "Market News", "Property Analysis", "Property Valuation", 
      "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator", "Settings"]
 )
 
@@ -267,11 +267,6 @@ elif page == "Market Insights":
     # Import and run market insights page
     from pages.market_insights import show_market_insights
     show_market_insights(filtered_data)
-    
-elif page == "Indian Market":
-    # Import and run Indian market insights page
-    from pages.india_market_insights import show_india_market_insights
-    show_india_market_insights()
     
 elif page == "Market News":
     # Import and run market news page

@@ -7,14 +7,280 @@ from utils.visualization import plot_city_comparison, plot_market_trends
 from utils.prediction import forecast_market_trends
 
 def show_market_insights(filtered_data):
-    st.title("Market Insights")
+    st.title("Global Market Insights")
     
     st.markdown("""
-    This page provides detailed market insights and trend analysis for the real estate market.
-    Use the filters in the sidebar to customize the data view.
+    This page provides detailed market insights and trend analysis for real estate markets worldwide.
+    Select a country to view detailed market data and trends for major cities in that region.
     """)
     
-    if filtered_data.empty:
+    # Get market trends from database
+    from utils.database import get_market_trends as get_db_market_trends
+    
+    # Get all available countries from the database
+    all_market_trends = get_db_market_trends()
+    all_market_trends_df = pd.DataFrame(all_market_trends)
+    
+    if not all_market_trends_df.empty:
+        # Get unique countries
+        countries = sorted(all_market_trends_df['country'].unique())
+        
+        # Add an "All Countries" option
+        countries = ["All Countries"] + countries
+        
+        # Country selection
+        selected_country = st.selectbox(
+            "Select a Country to View Market Insights",
+            options=countries,
+            index=0
+        )
+        
+        # Filter data based on selected country
+        if selected_country != "All Countries":
+            country_market_data = all_market_trends_df[all_market_trends_df['country'] == selected_country]
+            st.subheader(f"Real Estate Market Insights for {selected_country}")
+            
+            # Country-specific overview (only shown when a specific country is selected)
+            # Calculate country-level metrics
+            country_metrics = country_market_data.groupby('date')[['median_price', 'avg_price', 'inventory', 'days_on_market']].mean().reset_index()
+            country_metrics = country_metrics.sort_values('date')
+            latest_metrics = country_metrics.iloc[-1] if not country_metrics.empty else None
+            
+            if latest_metrics is not None:
+                # Display country-level metrics
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric(
+                        "Median Price", 
+                        f"${latest_metrics['median_price']:,.0f}",
+                        delta=f"{((latest_metrics['median_price'] / country_metrics.iloc[-2]['median_price'] - 1) * 100):.1f}%" 
+                        if len(country_metrics) > 1 else None
+                    )
+                
+                with col2:
+                    st.metric(
+                        "Average Price", 
+                        f"${latest_metrics['avg_price']:,.0f}",
+                        delta=f"{((latest_metrics['avg_price'] / country_metrics.iloc[-2]['avg_price'] - 1) * 100):.1f}%" 
+                        if len(country_metrics) > 1 else None
+                    )
+                
+                with col3:
+                    st.metric(
+                        "Inventory", 
+                        f"{latest_metrics['inventory']:,.0f}",
+                        delta=f"{(latest_metrics['inventory'] - country_metrics.iloc[-2]['inventory']):+.0f}" 
+                        if len(country_metrics) > 1 else None
+                    )
+                
+                with col4:
+                    st.metric(
+                        "Days on Market", 
+                        f"{latest_metrics['days_on_market']:.1f}",
+                        delta=f"{(latest_metrics['days_on_market'] - country_metrics.iloc[-2]['days_on_market']):+.1f}" 
+                        if len(country_metrics) > 1 else None,
+                        delta_color="inverse"  # Lower is better for days on market
+                    )
+                
+                # Country price trend chart
+                st.subheader(f"Price Trends in {selected_country}")
+                
+                fig = px.line(
+                    country_metrics,
+                    x='date',
+                    y=['median_price', 'avg_price'],
+                    title=f"Historical Price Trends in {selected_country}",
+                    labels={
+                        "value": "Price ($)",
+                        "date": "Date",
+                        "variable": "Metric"
+                    },
+                    color_discrete_map={
+                        "median_price": "blue",
+                        "avg_price": "red"
+                    }
+                )
+                fig.update_layout(
+                    yaxis_tickprefix='$', 
+                    yaxis_tickformat=',',
+                    legend=dict(
+                        title=None,
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    )
+                )
+                # Rename legend items
+                newnames = {'median_price': 'Median Price', 'avg_price': 'Average Price'}
+                fig.for_each_trace(lambda t: t.update(name = newnames[t.name]))
+                
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            country_market_data = all_market_trends_df
+            st.subheader("Global Real Estate Market Insights")
+            
+            # Global market comparison (top countries by median price)
+            st.markdown("### Global Market Comparison")
+            
+            # Get the latest data for each country
+            latest_global_data = all_market_trends_df.sort_values('date').groupby('country').last().reset_index()
+            
+            # Plot top countries by median price
+            top_countries = latest_global_data.sort_values('median_price', ascending=False).head(10)
+            
+            fig = px.bar(
+                top_countries,
+                x='country',
+                y='median_price',
+                title="Top Countries by Median Property Price",
+                color='median_price',
+                labels={"median_price": "Median Price ($)", "country": "Country"},
+                color_continuous_scale=px.colors.sequential.Viridis
+            )
+            fig.update_layout(yaxis_tickprefix='$', yaxis_tickformat=',')
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Plot global price per sqft comparison
+            fig = px.bar(
+                latest_global_data.sort_values('price_per_sqft', ascending=False).head(10),
+                x='country',
+                y='price_per_sqft',
+                title="Top Countries by Price per Square Foot",
+                color='price_per_sqft',
+                labels={"price_per_sqft": "Price per Sq.Ft. ($)", "country": "Country"},
+                color_continuous_scale=px.colors.sequential.Plasma
+            )
+            fig.update_layout(yaxis_tickprefix='$', yaxis_tickformat=',')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Show cities available in selected country
+        cities_in_country = sorted(country_market_data['city'].unique())
+        
+        # Custom filtering for selected country data
+        st.markdown(f"### Major Cities in {selected_country if selected_country != 'All Countries' else 'Selected Markets'}")
+        
+        selected_cities = st.multiselect(
+            "Select Cities to Compare",
+            options=cities_in_country,
+            default=cities_in_country[:5] if len(cities_in_country) > 5 else cities_in_country
+        )
+        
+        if selected_cities:
+            city_data = country_market_data[country_market_data['city'].isin(selected_cities)]
+            
+            # Convert to filtered_data format for compatibility with existing code
+            if not filtered_data.empty:
+                filtered_data = filtered_data[filtered_data['city'].isin(selected_cities)]
+            
+            # Add city data metrics
+            latest_city_data = (city_data.sort_values('date')
+                               .groupby('city').last()
+                               .reset_index())
+            
+            # Display city metrics in a table
+            metrics_df = (
+                latest_city_data[['city', 'median_price', 'avg_price', 'price_per_sqft', 'days_on_market', 'year_over_year_change']]
+                .rename(columns={
+                    'median_price': 'Median Price ($)',
+                    'avg_price': 'Average Price ($)',
+                    'price_per_sqft': 'Price/Sqft ($)',
+                    'days_on_market': 'Days on Market',
+                    'year_over_year_change': 'Annual Appreciation (%)'
+                })
+                .set_index('city')
+                .sort_values('Median Price ($)', ascending=False)
+            )
+            st.dataframe(metrics_df)
+            
+            # Add country-specific visualizations
+            st.subheader(f"Market Metrics: {selected_country if selected_country != 'All Countries' else 'Global Markets'}")
+            
+            # Tab-based visualizations for different metrics
+            metric_tabs = st.tabs(["Median Prices", "Price/Sqft", "Days on Market", "Appreciation Rates"])
+            
+            # Tab 1: Median Prices by City
+            with metric_tabs[0]:
+                fig = px.bar(
+                    latest_city_data.sort_values('median_price', ascending=False),
+                    x='city',
+                    y='median_price',
+                    title=f"Median Property Prices by City in {selected_country if selected_country != 'All Countries' else 'Global Markets'}",
+                    labels={"median_price": "Median Price ($)", "city": "City"},
+                    color='median_price',
+                    color_continuous_scale=px.colors.sequential.Viridis
+                )
+                fig.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Tab 2: Price per Square Foot
+            with metric_tabs[1]:
+                fig = px.bar(
+                    latest_city_data.sort_values('price_per_sqft', ascending=False),
+                    x='city',
+                    y='price_per_sqft',
+                    title=f"Price per Square Foot by City in {selected_country if selected_country != 'All Countries' else 'Global Markets'}",
+                    labels={"price_per_sqft": "Price per Sq.Ft. ($)", "city": "City"},
+                    color='price_per_sqft',
+                    color_continuous_scale=px.colors.sequential.Plasma
+                )
+                fig.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Tab 3: Days on Market
+            with metric_tabs[2]:
+                fig = px.bar(
+                    latest_city_data.sort_values('days_on_market'),
+                    x='city',
+                    y='days_on_market',
+                    title=f"Average Days on Market by City in {selected_country if selected_country != 'All Countries' else 'Global Markets'}",
+                    labels={"days_on_market": "Days on Market", "city": "City"},
+                    color='days_on_market',
+                    color_continuous_scale=px.colors.sequential.Blues_r
+                )
+                fig.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Tab 4: Annual Appreciation Rates
+            with metric_tabs[3]:
+                fig = px.bar(
+                    latest_city_data.sort_values('year_over_year_change', ascending=False),
+                    x='city',
+                    y='year_over_year_change',
+                    title=f"Annual Appreciation Rate by City in {selected_country if selected_country != 'All Countries' else 'Global Markets'}",
+                    labels={"year_over_year_change": "Annual Appreciation (%)", "city": "City"},
+                    color='year_over_year_change',
+                    color_continuous_scale=px.colors.sequential.Reds
+                )
+                fig.update_layout(xaxis_tickangle=-45)
+                st.plotly_chart(fig, use_container_width=True)
+                
+            # Historical price trends for selected cities
+            st.subheader(f"Historical Price Trends: {selected_country if selected_country != 'All Countries' else 'Global Markets'}")
+            
+            # Group by city and date, and get the median price for each month
+            city_trends = city_data.groupby(['city', 'date'])['median_price'].mean().reset_index()
+            
+            # Plot historical price trends
+            fig = px.line(
+                city_trends,
+                x='date',
+                y='median_price',
+                color='city',
+                title=f"Historical Median Prices in {selected_country if selected_country != 'All Countries' else 'Selected Markets'}",
+                labels={"median_price": "Median Price ($)", "date": "Date", "city": "City"}
+            )
+            fig.update_layout(yaxis_tickprefix='$', yaxis_tickformat=',')
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Please select at least one city to view market insights.")
+            return
+    else:
+        st.warning("No market trend data available in the database.")
+        
+    if filtered_data.empty and not selected_cities:
         st.warning("No data available with the current filters. Please adjust your selection.")
         return
     
