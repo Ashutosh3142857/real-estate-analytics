@@ -497,9 +497,9 @@ def show_property_notifications_tab(available_channels):
                             </div>
                             <p>The real estate market in {location} continues to evolve. Here's what this means for you:</p>
                             <ul>
-                                <li>{'Increasing' if market_data['year_over_year_change'] > 0 else 'Decreasing'} property values indicate a {'seller\'s' if market_data['year_over_year_change'] > 0 else 'buyer\'s'} market</li>
-                                <li>Average time on market of {market_data['days_on_market']} days shows {'high' if market_data['days_on_market'] < 30 else 'moderate' if market_data['days_on_market'] < 60 else 'slower'} demand</li>
-                                <li>Current inventory levels are {'low' if market_data['inventory'] < 50 else 'moderate' if market_data['inventory'] < 100 else 'high'}</li>
+                                <li>{"Increasing" if market_data['year_over_year_change'] > 0 else "Decreasing"} property values indicate a {"seller's" if market_data['year_over_year_change'] > 0 else "buyer's"} market</li>
+                                <li>Average time on market of {market_data['days_on_market']} days shows {"high" if market_data['days_on_market'] < 30 else "moderate" if market_data['days_on_market'] < 60 else "slower"} demand</li>
+                                <li>Current inventory levels are {"low" if market_data['inventory'] < 50 else "moderate" if market_data['inventory'] < 100 else "high"}</li>
                             </ul>
                             <p>If you're considering buying or selling in this area, now is a good time to discuss your options. Reply to this email for a personalized market analysis.</p>
                             <p>Best regards,<br>Your Real Estate Team</p>
