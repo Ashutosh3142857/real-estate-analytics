@@ -26,7 +26,9 @@ PLATFORMS = {
     "google": "Google",
     "twitter": "Twitter",
     "tiktok": "TikTok",
-    "linkedin": "LinkedIn"
+    "linkedin": "LinkedIn",
+    "whatsapp": "WhatsApp",
+    "sms": "SMS"
 }
 
 AD_TYPES = {
@@ -35,7 +37,9 @@ AD_TYPES = {
     "google": ["Search", "Display", "Discovery", "Video", "Local"],
     "twitter": ["Promoted Tweet", "Promoted Account", "Promoted Trend", "Image", "Video"],
     "tiktok": ["In-Feed", "TopView", "Branded Effect", "Branded Hashtag Challenge"],
-    "linkedin": ["Sponsored Content", "Text Ad", "Dynamic Ad", "Message Ad", "Conversation Ad"]
+    "linkedin": ["Sponsored Content", "Text Ad", "Dynamic Ad", "Message Ad", "Conversation Ad"],
+    "whatsapp": ["Template Message", "List Message", "Button Message", "Interactive Message"],
+    "sms": ["Standard SMS", "Promotional SMS", "OTP Message", "Transaction Notification"]
 }
 
 def check_platform_credentials():
@@ -94,6 +98,24 @@ def check_platform_credentials():
     
     credentials["linkedin"] = {
         "configured": bool(linkedin_client_id and linkedin_client_secret and linkedin_access_token)
+    }
+    
+    # Check WhatsApp Business API
+    whatsapp_phone_number_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    whatsapp_business_account_id = os.getenv("WHATSAPP_BUSINESS_ACCOUNT_ID")
+    whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
+    
+    credentials["whatsapp"] = {
+        "configured": bool(whatsapp_phone_number_id and whatsapp_business_account_id and whatsapp_access_token)
+    }
+    
+    # Check SMS Provider (Twilio)
+    twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    twilio_phone_number = os.getenv("TWILIO_PHONE_NUMBER")
+    
+    credentials["sms"] = {
+        "configured": bool(twilio_account_sid and twilio_auth_token and twilio_phone_number)
     }
     
     return credentials
