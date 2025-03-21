@@ -14,6 +14,11 @@ def show_market_insights(filtered_data):
     Select a country to view detailed market data and trends for major cities in that region.
     """)
     
+    # Import required libraries
+    import folium
+    from streamlit_folium import st_folium
+    from utils.visualization import create_property_map
+    
     # Get market trends from database
     from utils.database import get_market_trends as get_db_market_trends
     
@@ -155,6 +160,69 @@ def show_market_insights(filtered_data):
             )
             fig.update_layout(yaxis_tickprefix='$', yaxis_tickformat=',')
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Global market map visualization
+            st.subheader("Global Market Map")
+            
+            # Get coordinates for each city
+            city_locations = []
+            for _, city_row in latest_global_data.iterrows():
+                # Skip if missing coordinates
+                if pd.isna(city_row.get('latitude', None)) or pd.isna(city_row.get('longitude', None)):
+                    continue
+                    
+                city_locations.append({
+                    'country': city_row['country'],
+                    'city': city_row.get('city', 'Unknown'),
+                    'latitude': city_row.get('latitude', 0),
+                    'longitude': city_row.get('longitude', 0),
+                    'median_price': city_row['median_price'],
+                    'avg_price': city_row['avg_price'],
+                    'price_per_sqft': city_row['price_per_sqft'],
+                    'year_over_year_change': city_row['year_over_year_change']
+                })
+            
+            if city_locations:
+                # Create a DataFrame for map plotting
+                map_df = pd.DataFrame(city_locations)
+                
+                # Create a world map
+                world_map = folium.Map(location=[0, 0], zoom_start=2, tiles='CartoDB positron')
+                
+                # Add markers for each country
+                for _, row in map_df.iterrows():
+                    # Create a tooltip with country information
+                    tooltip = f"""
+                    <b>{row['country']}</b><br>
+                    Median Price: ${row['median_price']:,.0f}<br>
+                    Avg Price: ${row['avg_price']:,.0f}<br>
+                    Price/Sqft: ${row['price_per_sqft']:.2f}<br>
+                    Annual Change: {row['year_over_year_change']:.1f}%
+                    """
+                    
+                    # Determine marker color based on price
+                    if row['median_price'] > map_df['median_price'].quantile(0.75):
+                        color = 'red'
+                    elif row['median_price'] > map_df['median_price'].median():
+                        color = 'orange' 
+                    elif row['median_price'] > map_df['median_price'].quantile(0.25):
+                        color = 'green'
+                    else:
+                        color = 'blue'
+                        
+                    # Add marker
+                    folium.CircleMarker(
+                        location=[row['latitude'], row['longitude']],
+                        radius=5,
+                        color=color,
+                        fill=True,
+                        fill_color=color,
+                        fill_opacity=0.7,
+                        tooltip=folium.Tooltip(tooltip)
+                    ).add_to(world_map)
+                
+                # Display the map
+                st_folium(world_map, width=1000, height=500, returned_objects=[])
         
         # Show cities available in selected country
         cities_in_country = sorted(country_market_data['city'].unique())
@@ -280,7 +348,8 @@ def show_market_insights(filtered_data):
     else:
         st.warning("No market trend data available in the database.")
         
-    if filtered_data.empty and not selected_cities:
+    # Handle the case where we don't have selected cities yet
+    if filtered_data.empty and 'selected_cities' not in locals():
         st.warning("No data available with the current filters. Please adjust your selection.")
         return
     
