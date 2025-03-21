@@ -523,7 +523,7 @@ def show_property_notifications_tab(available_channels):
                                 <p>{property_details['bedrooms']} bedrooms | {property_details['bathrooms']} bathrooms | {property_details['sqft']} sq.ft.</p>
                                 <a href="#" style="background-color: #4285f4; color: white; padding: 10px 15px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 10px;">View Similar Properties</a>
                             </div>
-                            <p>This property's status has changed to {status}. {'You might want to consider similar properties in the area.' if status in ['Sold', 'Under Contract', 'Pending'] else 'This might affect your interest in this property.'}</p>
+                            <p>This property's status has changed to {status}. {"You might want to consider similar properties in the area." if status in ["Sold", "Under Contract", "Pending"] else "This might affect your interest in this property."}</p>
                             <p>Feel free to reply to this email if you have any questions or would like to discuss other properties.</p>
                             <p>Best regards,<br>Your Real Estate Team</p>
                         </div>
@@ -573,7 +573,7 @@ def show_property_notifications_tab(available_channels):
                         result = send_property_notification(r, property_details_with_old_price, "price_change")
                     
                     elif notification_type == "Open House":
-                        message = f"Open House{'(Virtual)' if is_virtual else ''}: {property_details['address']} on {open_house_time}. "
+                        message = f"Open House{\"(Virtual)\" if is_virtual else \"\"}: {property_details['address']} on {open_house_time}. "
                         if is_virtual:
                             message += f"Join via {virtual_platform}: {virtual_link}"
                         else:
