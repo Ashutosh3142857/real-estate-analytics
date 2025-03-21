@@ -9,6 +9,13 @@ from utils.prediction import forecast_market_trends
 def show_market_insights(filtered_data):
     st.title("Global Market Insights")
     
+    # Initial check for empty data
+    if filtered_data is None or (hasattr(filtered_data, 'empty') and filtered_data.empty):
+        st.warning("No data available with the current filters. Please adjust your selection.")
+        
+        # We'll still continue to show the global market insights from the database
+        # which doesn't rely on the filtered_data parameter
+        
     st.markdown("""
     This page provides detailed market insights and trend analysis for real estate markets worldwide.
     Select a country to view detailed market data and trends for major cities in that region.
@@ -240,7 +247,7 @@ def show_market_insights(filtered_data):
             city_data = country_market_data[country_market_data['city'].isin(selected_cities)]
             
             # Convert to filtered_data format for compatibility with existing code
-            if not filtered_data.empty:
+            if filtered_data is not None and not getattr(filtered_data, 'empty', True):
                 filtered_data = filtered_data[filtered_data['city'].isin(selected_cities)]
             
             # Add city data metrics
@@ -349,12 +356,12 @@ def show_market_insights(filtered_data):
         st.warning("No market trend data available in the database.")
         
     # Handle the case where we don't have selected cities yet
-    if filtered_data.empty and 'selected_cities' not in locals():
+    if (filtered_data is None or getattr(filtered_data, 'empty', True)) and 'selected_cities' not in locals():
         st.warning("No data available with the current filters. Please adjust your selection.")
         return
     
     # Only proceed with this section if we have valid filtered data
-    if not filtered_data.empty:
+    if filtered_data is not None and not getattr(filtered_data, 'empty', True):
         # Market overview metrics
         metrics = calculate_price_metrics(filtered_data)
         
@@ -383,7 +390,7 @@ def show_market_insights(filtered_data):
         # Get forecast data
         forecast_data = forecast_market_trends(filtered_data, forecast_months=6)
         
-        if not forecast_data.empty:
+        if forecast_data is not None and not getattr(forecast_data, 'empty', True):
             # Create plot
             fig = go.Figure()
             
