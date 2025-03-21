@@ -400,7 +400,7 @@ def show_market_insights(filtered_data):
                 
                 # Historical data
                 historical = city_data[city_data['is_forecast'] == False]
-                if not historical.empty:
+                if historical is not None and not getattr(historical, 'empty', True):
                     fig.add_trace(go.Scatter(
                         x=historical['date'],
                         y=historical['avg_price'],
@@ -411,7 +411,7 @@ def show_market_insights(filtered_data):
                 
                 # Forecast data
                 forecast = city_data[city_data['is_forecast'] == True]
-                if not forecast.empty:
+                if forecast is not None and not getattr(forecast, 'empty', True):
                     fig.add_trace(go.Scatter(
                         x=forecast['date'],
                         y=forecast['avg_price'],
@@ -448,7 +448,7 @@ def show_market_insights(filtered_data):
         
         market_df = get_market_trends(filtered_data)
         
-        if not market_df.empty:
+        if market_df is not None and not getattr(market_df, 'empty', True):
             # Calculate month-over-month changes
             market_df = market_df.sort_values(['city', 'date'])
             market_df['prev_price'] = market_df.groupby('city')['avg_price'].shift(1)
@@ -458,81 +458,129 @@ def show_market_insights(filtered_data):
             market_df = market_df.dropna(subset=['price_change_pct'])
             
             # Create a monthly change heatmap
-            pivot_df = market_df.pivot(index='city', columns='date', values='price_change_pct')
-            
-            # Create annotations
-            annotations = []
-            for i, row in enumerate(pivot_df.values):
-                for j, value in enumerate(row):
-                    if not pd.isna(value):
-                        color = "green" if value >= 0 else "red"
-                        annotations.append(
-                            dict(
-                                x=pivot_df.columns[j],
-                                y=pivot_df.index[i],
-                                text=f"{value:.1f}%",
-                                showarrow=False,
-                                font=dict(color=color)
-                            )
-                        )
-            
-            fig = px.imshow(
-                pivot_df,
-                labels=dict(x="Month", y="City", color="% Change"),
-                x=pivot_df.columns.strftime('%b %Y'),
-                y=pivot_df.index,
-                color_continuous_scale='RdYlGn',
-                template='plotly_white',
-                aspect="auto"
-            )
-            
-            fig.update_layout(
-                annotations=annotations,
-                height=500
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                # Initialize variables
+                pivot_df = None
+                annotations = []
+                continue_with_heatmap = False
+                
+                # Create the pivot table
+                if len(market_df) > 0:
+                    pivot_df = market_df.pivot(index='city', columns='date', values='price_change_pct')
+                    
+                    # Check if we have a valid pivot table with data
+                    if pivot_df is not None and not pivot_df.empty and len(pivot_df) > 0:
+                        # Create annotations
+                        annotations = []
+                        for i, row in enumerate(pivot_df.values):
+                            for j, value in enumerate(row):
+                                if not pd.isna(value):
+                                    color = "green" if value >= 0 else "red"
+                                    annotations.append(
+                                        dict(
+                                            x=pivot_df.columns[j],
+                                            y=pivot_df.index[i],
+                                            text=f"{value:.1f}%",
+                                            showarrow=False,
+                                            font=dict(color=color)
+                                        )
+                                    )
+                        
+                        # Flag that we can proceed with creating the heatmap
+                        continue_with_heatmap = True
+                    else:
+                        st.warning("Not enough price change data to create the heatmap.")
+                else:
+                    st.warning("No market data available for heatmap visualization.")
+                
+                # Only create the heatmap if we have valid data
+                if continue_with_heatmap and pivot_df is not None and not pivot_df.empty:
+                    fig = px.imshow(
+                        pivot_df,
+                        labels=dict(x="Month", y="City", color="% Change"),
+                        x=pivot_df.columns.strftime('%b %Y'),
+                        y=pivot_df.index,
+                        color_continuous_scale='RdYlGn',
+                        template='plotly_white',
+                        aspect="auto"
+                    )
+                    
+                    fig.update_layout(
+                        annotations=annotations,
+                        height=500
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Error creating or displaying price change heatmap: {str(e)}")
             
             # Overall market summary
             st.subheader("Market Summary")
             
-            # Calculate recent market metrics
-            recent_months = market_df.sort_values('date')['date'].unique()[-2:]
-            recent_data = market_df[market_df['date'].isin(recent_months)]
-            
-            # Get city with highest appreciation
-            city_changes = recent_data.groupby('city')['price_change_pct'].mean().sort_values(ascending=False)
-            top_city = city_changes.index[0]
-            top_appreciation = city_changes.iloc[0]
-            
-            # Get city with lowest appreciation
-            bottom_city = city_changes.index[-1]
-            bottom_appreciation = city_changes.iloc[-1]
-            
-            # Calculate overall market average change
-            overall_change = recent_data['price_change_pct'].mean()
-            
-            st.markdown(f"""
-            - Overall market change: **{overall_change:.1f}%** in the last month
-            - Highest appreciation: **{top_city}** at **{top_appreciation:.1f}%**
-            - Lowest appreciation: **{bottom_city}** at **{bottom_appreciation:.1f}%**
-            """)
-            
-            # Display market hotness indicators
-            if abs(overall_change) < 1:
-                market_status = "Stable market conditions with minimal price changes"
-            elif overall_change > 1:
-                market_status = "Hot market with increasing prices - good for sellers"
-            else:
-                market_status = "Buyer's market with decreasing prices - good for buyers"
-            
-            st.info(f"**Market Status**: {market_status}")
+            try:
+                # Check if we have enough data for market metrics
+                if len(market_df) > 0 and 'date' in market_df.columns and 'price_change_pct' in market_df.columns:
+                    # Get unique dates and sort them
+                    sorted_dates = sorted(market_df['date'].unique())
+                    
+                    # Make sure we have at least 2 months of data
+                    if len(sorted_dates) >= 2:
+                        # Take the most recent 2 months
+                        recent_months = sorted_dates[-2:]
+                        recent_data = market_df[market_df['date'].isin(recent_months)]
+                        
+                        # Check if we have data for the recent months
+                        if len(recent_data) > 0:
+                            # Group by city and calculate average change
+                            city_changes = recent_data.groupby('city')['price_change_pct'].mean().sort_values(ascending=False)
+                            
+                            # Make sure we have cities with data
+                            if len(city_changes) > 0:
+                                top_city = city_changes.index[0]
+                                top_appreciation = city_changes.iloc[0]
+                                
+                                bottom_city = city_changes.index[-1]
+                                bottom_appreciation = city_changes.iloc[-1]
+                                
+                                # Calculate overall market average change
+                                overall_change = recent_data['price_change_pct'].mean()
+                                
+                                st.markdown(f"""
+                                - Overall market change: **{overall_change:.1f}%** in the last month
+                                - Highest appreciation: **{top_city}** at **{top_appreciation:.1f}%**
+                                - Lowest appreciation: **{bottom_city}** at **{bottom_appreciation:.1f}%**
+                                """)
+                                
+                                # Display market hotness indicators
+                                if abs(overall_change) < 1:
+                                    market_status = "Stable market conditions with minimal price changes"
+                                elif overall_change > 1:
+                                    market_status = "Hot market with increasing prices - good for sellers"
+                                else:
+                                    market_status = "Buyer's market with decreasing prices - good for buyers"
+                                
+                                st.info(f"**Market Status**: {market_status}")
+                            else:
+                                st.warning("Not enough data to identify top performing cities.")
+                        else:
+                            st.warning("Not enough recent data for market summary.")
+                    else:
+                        st.warning("Need at least 2 months of data for market comparison.")
+                else:
+                    st.warning("Not enough data available for market summary.")
+            except Exception as e:
+                st.warning(f"Error calculating market summary: {str(e)}")
         else:
             st.warning("Not enough data to calculate monthly changes.")
         
         # Add a data table with the raw data
         st.subheader("Market Data Table")
-        st.dataframe(
-            filtered_data[['address', 'city', 'price', 'bedrooms', 'bathrooms', 'sqft', 'property_type', 'year_built', 'days_on_market']]
-            .sort_values(by='price', ascending=False)
-        )
+        
+        # Check if the necessary columns exist in the filtered_data
+        required_columns = ['address', 'city', 'price', 'bedrooms', 'bathrooms', 'sqft', 'property_type', 'year_built', 'days_on_market']
+        if filtered_data is not None and all(col in filtered_data.columns for col in required_columns):
+            st.dataframe(
+                filtered_data[required_columns].sort_values(by='price', ascending=False)
+            )
+        else:
+            st.warning("No detailed property data available for the current selection.")
