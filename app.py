@@ -2,8 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from utils.data_processing import load_sample_data
-from utils.visualization import plot_market_trends, plot_property_distribution
+from utils.visualization import plot_market_trends, plot_property_distribution, create_property_map
 from utils.real_estate_api import search_properties_by_location, search_properties_zillow, get_location_suggestions
+from streamlit_folium import folium_static
 import os
 from datetime import datetime
 
@@ -32,7 +33,7 @@ st.sidebar.image("https://img.icons8.com/fluency/96/000000/real-estate.png", wid
 # Navigation
 page = st.sidebar.radio(
     "Navigate to",
-    ["Dashboard", "Market Insights", "Property Analysis", "Property Valuation", 
+    ["Dashboard", "Market Insights", "Market News", "Property Analysis", "Property Valuation", 
      "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator"]
 )
 
@@ -108,6 +109,26 @@ if page == "Dashboard":
         
         # Show loading spinner
         with st.spinner(f"Searching properties in {location_search}..."):
+            # Check if RapidAPI key is set in environment variables
+            if not os.environ.get("RAPIDAPI_KEY"):
+                # User input for API key (temporarily stored in session state)
+                if 'api_key' not in st.session_state:
+                    st.session_state.api_key = ""
+                
+                api_key = st.text_input(
+                    "Enter your RapidAPI Key to search for properties:", 
+                    type="password",
+                    value=st.session_state.api_key
+                )
+                
+                if api_key:
+                    st.session_state.api_key = api_key
+                    # Set the API key in environment variables
+                    os.environ["RAPIDAPI_KEY"] = api_key
+                else:
+                    st.info("You need a RapidAPI key to use this feature. Visit RapidAPI.com to obtain a key.")
+                    st.stop()  # Stop execution if no API key
+            
             # Call the appropriate API based on selection
             if search_api == "Realty Mole":
                 results = search_properties_by_location(location_search, limit=20)
@@ -121,7 +142,7 @@ if page == "Dashboard":
                 st.success(f"Found {len(results)} properties in {location_search}")
                 st.rerun()  # Rerun app to refresh filters with new data
             else:
-                st.error(f"No properties found in {location_search}")
+                st.error(f"No properties found in {location_search} or your API key doesn't have access to this service.")
     
     # Help text with API key information
     with st.expander("ℹ️ About Property Search"):
@@ -209,6 +230,11 @@ if page == "Dashboard":
         fig2 = plot_property_distribution(filtered_data)
         st.plotly_chart(fig2, use_container_width=True)
         
+        # Property Map Visualization
+        st.subheader("Property Map")
+        property_map = create_property_map(filtered_data)
+        folium_static(property_map, width=1200, height=600)
+        
         # Recent listings
         st.subheader("Recent Listings")
         st.dataframe(
@@ -222,6 +248,11 @@ elif page == "Market Insights":
     # Import and run market insights page
     from pages.market_insights import show_market_insights
     show_market_insights(filtered_data)
+    
+elif page == "Market News":
+    # Import and run market news page
+    from pages.market_news import show_market_news
+    show_market_news()
 
 elif page == "Property Analysis":
     # Import and run property analysis page
