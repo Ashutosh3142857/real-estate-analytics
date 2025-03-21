@@ -53,7 +53,8 @@ st.sidebar.image("https://img.icons8.com/fluency/96/000000/real-estate.png", wid
 page = st.sidebar.radio(
     "Navigate to",
     ["Dashboard", "Market Insights", "Market News", "Property Analysis", "Property Valuation", 
-     "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator", "Settings"]
+     "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator", 
+     "Settings", "System Integrations"]
 )
 
 # Filter section in sidebar
@@ -307,6 +308,11 @@ elif page == "Settings":
     # Import and run settings page
     from pages.settings import show_settings
     show_settings()
+    
+elif page == "System Integrations":
+    # Import and run integration settings page
+    from pages.integration_settings import show_integration_settings
+    show_integration_settings()
 
 # Footer
 st.sidebar.markdown("---")
