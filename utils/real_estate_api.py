@@ -4,12 +4,24 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import random
+import logging
+from dotenv import load_dotenv
+from utils.database import add_property, get_properties, add_market_trend, add_search_history
+from utils.api_manager import get_rapidapi_headers, make_api_request, cache_api_response, get_cached_response
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # RapidAPI endpoints for real estate data
 REALTY_MOLE_ENDPOINT = "https://realty-mole-property-api.p.rapidapi.com/properties"
 REALTY_IN_US_ENDPOINT = "https://realty-in-us.p.rapidapi.com/properties/v2/list-for-sale"
+REALTOR_API_ENDPOINT = "https://realtor.p.rapidapi.com/properties/v2/list-for-sale"
 
-def get_rapidapi_headers():
+def get_rapidapi_headers(host="realty-mole-property-api.p.rapidapi.com"):
     """Get the headers needed for RapidAPI requests"""
     api_key = os.environ.get("RAPIDAPI_KEY")
     
@@ -19,81 +31,186 @@ def get_rapidapi_headers():
     
     return {
         "X-RapidAPI-Key": api_key,
-        "X-RapidAPI-Host": "realty-mole-property-api.p.rapidapi.com"
+        "X-RapidAPI-Host": host
     }
 
-def search_properties_by_location(location, limit=10):
+def search_properties_by_location(location, limit=10, use_cache=True, save_to_db=True):
     """
     Search for properties by location (city, zip code, address, etc.)
     Returns a pandas DataFrame with property data
     Supports international searches with location format: 'City, Country'
+    
+    Args:
+        location (str): Location to search for (city, zip code, etc.)
+        limit (int): Maximum number of properties to return
+        use_cache (bool): Whether to use cached results if available
+        save_to_db (bool): Whether to save results to database
+        
+    Returns:
+        DataFrame: Properties matching the search criteria
     """
-    headers = get_rapidapi_headers()
+    # First check if we have cached results
+    if use_cache:
+        cached_data = get_cached_response("search_properties_by_location", {"location": location, "limit": limit})
+        if cached_data is not None:
+            logger.info(f"Using cached results for location: {location}")
+            return pd.DataFrame(cached_data)
+    
+    # Next check if properties are in the database
+    location_parts = location.split(',')
+    city = location_parts[0].strip()
+    
+    # Create filter for database search
+    db_filters = {"city": city}
+    if len(location_parts) > 1:
+        # Check if second part is a state or country
+        state_or_country = location_parts[1].strip()
+        if len(state_or_country) == 2 and state_or_country.isalpha():
+            db_filters["state"] = state_or_country
+        else:
+            db_filters["country"] = state_or_country
+    
+    # Try to get properties from database
+    db_results = get_properties(db_filters)
+    if not db_results.empty and len(db_results) >= limit:
+        logger.info(f"Retrieved {len(db_results)} properties from database for location: {location}")
+        # Add historical price data for trends
+        db_results = add_historical_prices(db_results)
+        return db_results.head(limit)
+    
+    # If not enough results in database, query the API
+    logger.info(f"Querying API for properties in location: {location}")
+    
+    # Determine if this is a US or international search
+    is_international = "," in location and any(country in location for country in 
+                            ["UK", "France", "Germany", "Japan", "China", "Australia", 
+                             "Brazil", "Canada", "Mexico", "India", "Singapore"])
+    
+    # Set the appropriate API host based on location
+    api_host = "realty-mole-property-api.p.rapidapi.com" if is_international else "realty-in-us.p.rapidapi.com"
+    headers = get_rapidapi_headers(api_host)
     
     if not headers:
-        # If no API key, return an empty DataFrame
-        return pd.DataFrame()
+        # If no API key, return database results (which might be empty)
+        return db_results
     
-    # Update headers for the appropriate host
-    if "," in location and any(country in location for country in 
-                             ["UK", "France", "Germany", "Japan", "China", "Australia", 
-                              "Brazil", "Canada", "Mexico", "India", "Singapore"]):
-        # Use international API host for non-US locations
-        headers["X-RapidAPI-Host"] = "realty-mole-property-api.p.rapidapi.com"
-    
-    params = {
-        "address": location,
-        "limit": limit
-    }
+    # Prepare parameters for the API request
+    if is_international:
+        params = {"address": location, "limit": limit}
+        endpoint = REALTY_MOLE_ENDPOINT
+    else:
+        # For US properties, use more specific API
+        params = {
+            "city": city,
+            "limit": limit,
+            "offset": "0",
+            "sort": "relevance"
+        }
+        
+        # Add state code if present
+        if len(location_parts) > 1 and len(location_parts[1].strip()) == 2:
+            params["state_code"] = location_parts[1].strip()
+            
+        endpoint = REALTY_IN_US_ENDPOINT
     
     try:
-        response = requests.get(REALTY_MOLE_ENDPOINT, headers=headers, params=params)
+        # Make the API request using the helper function
+        response = make_api_request(endpoint, headers, params)
         
-        if response.status_code == 200:
-            data = response.json()
-            
-            if isinstance(data, list) and len(data) > 0:
-                # Process the API data into a DataFrame
-                properties = []
-                for prop in data:
+        if not response:
+            logger.warning(f"API request failed for location: {location}")
+            return db_results
+        
+        # Process the API data
+        properties = []
+        
+        if is_international:
+            # Process international API response (list format)
+            if isinstance(response, list) and len(response) > 0:
+                for prop in response:
                     property_data = {
-                        'property_id': prop.get('id', random.randint(10000, 99999)),
                         'address': prop.get('formattedAddress', 'Unknown Address'),
                         'city': prop.get('city', 'Unknown City'),
                         'state': prop.get('state', 'Unknown State'),
-                        'zipcode': prop.get('zipCode', 'Unknown ZIP'),
+                        'zip_code': prop.get('zipCode', 'Unknown ZIP'),
+                        'country': location_parts[1].strip() if len(location_parts) > 1 else '',
                         'price': prop.get('price', 0),
                         'bedrooms': prop.get('bedrooms', 0),
                         'bathrooms': prop.get('bathrooms', 0),
                         'sqft': prop.get('squareFootage', 0),
                         'property_type': prop.get('propertyType', 'Unknown Type'),
                         'year_built': prop.get('yearBuilt', 2000),
-                        'list_date': prop.get('listedDate', datetime.now().strftime('%Y-%m-%d')),
+                        'description': prop.get('description', ''),
                         'latitude': prop.get('latitude', 0),
-                        'longitude': prop.get('longitude', 0)
+                        'longitude': prop.get('longitude', 0),
+                        'source': 'realty-mole-api'
                     }
                     properties.append(property_data)
-                
-                df = pd.DataFrame(properties)
-                
-                # Add columns needed by the application if they don't exist
-                if 'list_date' not in df.columns:
-                    df['list_date'] = datetime.now().strftime('%Y-%m-%d')
-                    
-                # Add historical price data for market trends
-                df = add_historical_prices(df)
-                
-                return df
-            else:
-                st.warning(f"No properties found for location: {location}")
-                return pd.DataFrame()
         else:
-            st.error(f"API request failed with status code: {response.status_code}")
-            return pd.DataFrame()
+            # Process US API response (nested format)
+            if 'properties' in response and len(response['properties']) > 0:
+                for prop in response['properties']:
+                    property_data = {
+                        'address': f"{prop.get('address', {}).get('line', 'Unknown Address')}",
+                        'city': prop.get('address', {}).get('city', 'Unknown City'),
+                        'state': prop.get('address', {}).get('state_code', 'Unknown State'),
+                        'zip_code': prop.get('address', {}).get('postal_code', 'Unknown ZIP'),
+                        'country': 'USA',
+                        'price': prop.get('price', 0),
+                        'bedrooms': prop.get('beds', 0),
+                        'bathrooms': prop.get('baths', 0),
+                        'sqft': prop.get('building_size', {}).get('size', 0),
+                        'property_type': prop.get('prop_type', 'Unknown Type'),
+                        'year_built': prop.get('year_built', 2000),
+                        'description': prop.get('description', ''),
+                        'latitude': prop.get('address', {}).get('lat', 0),
+                        'longitude': prop.get('address', {}).get('lon', 0),
+                        'source': 'realty-in-us-api'
+                    }
+                    properties.append(property_data)
+        
+        # If we got properties from the API
+        if properties:
+            # Save to database if requested
+            if save_to_db:
+                for prop in properties:
+                    try:
+                        add_property(prop)
+                    except Exception as e:
+                        logger.error(f"Error saving property to database: {str(e)}")
+            
+            # Save search to database for analytics
+            try:
+                search_data = {
+                    "search_query": location,
+                    "location": location,
+                    "min_price": None,
+                    "max_price": None,
+                    "property_type": None
+                }
+                add_search_history(search_data)
+            except Exception as e:
+                logger.error(f"Error saving search history: {str(e)}")
+            
+            # Convert to DataFrame and add historical data
+            result_df = pd.DataFrame(properties)
+            result_df = add_historical_prices(result_df)
+            
+            # Cache the results
+            cache_api_response("search_properties_by_location", 
+                              {"location": location, "limit": limit}, 
+                              result_df.to_dict('records'))
+            
+            return result_df
+        else:
+            logger.warning(f"No properties found for location: {location}")
+            # Return any database results we found earlier
+            return db_results
     
     except Exception as e:
-        st.error(f"Error fetching property data: {str(e)}")
-        return pd.DataFrame()
+        logger.error(f"Error fetching property data from API: {str(e)}")
+        # Return any database results we found earlier
+        return db_results
 
 def search_properties_zillow(location, limit=10):
     """
