@@ -573,7 +573,8 @@ def show_property_notifications_tab(available_channels):
                         result = send_property_notification(r, property_details_with_old_price, "price_change")
                     
                     elif notification_type == "Open House":
-                        message = f"Open House{\"(Virtual)\" if is_virtual else \"\"}: {property_details['address']} on {open_house_time}. "
+                        virtual_text = "(Virtual)" if is_virtual else ""
+                        message = f"Open House{virtual_text}: {property_details['address']} on {open_house_time}. "
                         if is_virtual:
                             message += f"Join via {virtual_platform}: {virtual_link}"
                         else:
