@@ -266,53 +266,103 @@ if page == "Dashboard":
 
 elif page == "Market Insights":
     # Import and run market insights page
-    from pages.market_insights import show_market_insights
-    show_market_insights(filtered_data)
+    try:
+        from pages.market_insights import show_market_insights
+        show_market_insights(filtered_data)
+    except Exception as e:
+        st.error(f"Error loading Market Insights page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
     
 elif page == "Market News":
     # Import and run market news page
-    from pages.market_news import show_market_news
-    show_market_news()
+    try:
+        from pages.market_news import show_market_news
+        show_market_news()
+    except Exception as e:
+        st.error(f"Error loading Market News page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
 
 elif page == "Property Analysis":
     # Import and run property analysis page
-    from pages.property_analysis import show_property_analysis
-    show_property_analysis(filtered_data)
+    try:
+        from pages.property_analysis import show_property_analysis
+        show_property_analysis(filtered_data)
+    except Exception as e:
+        st.error(f"Error loading Property Analysis page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
 
 elif page == "Property Valuation":
     # Import and run property valuation page
-    from pages.property_valuation import show_property_valuation
-    show_property_valuation()
+    try:
+        from pages.property_valuation import show_property_valuation
+        show_property_valuation()
+    except Exception as e:
+        st.error(f"Error loading Property Valuation page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
 
 elif page == "Property Matching":
     # Import and run property matching page
-    from pages.property_matching import show_property_matching
-    show_property_matching()
+    try:
+        from pages.property_matching import show_property_matching
+        show_property_matching()
+    except Exception as e:
+        st.error(f"Error loading Property Matching page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
 
 elif page == "Lead Management":
     # Import and run lead management page
-    from pages.lead_management import show_lead_management
-    show_lead_management()
+    try:
+        from pages.lead_management import show_lead_management
+        show_lead_management()
+    except Exception as e:
+        st.error(f"Error loading Lead Management page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
 
 elif page == "Investment Calculator":
     # Import and run investment calculator page
-    from pages.investment_calculator import show_investment_calculator
-    show_investment_calculator()
+    try:
+        from pages.investment_calculator import show_investment_calculator
+        show_investment_calculator()
+    except Exception as e:
+        st.error(f"Error loading Investment Calculator page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
     
 elif page == "Marketing Generator":
     # Import and run marketing generator page
-    from pages.marketing_generator import show_marketing_generator
-    show_marketing_generator()
+    try:
+        from pages.marketing_generator import show_marketing_generator
+        show_marketing_generator()
+    except Exception as e:
+        st.error(f"Error loading Marketing Generator page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
     
 elif page == "Settings":
     # Import and run settings page
-    from pages.settings import show_settings
-    show_settings()
+    try:
+        from pages.settings import show_settings
+        show_settings()
+    except Exception as e:
+        st.error(f"Error loading Settings page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
     
 elif page == "System Integrations":
     # Import and run integration settings page
-    from pages.integration_settings import show_integration_settings
-    show_integration_settings()
+    try:
+        from pages.integration_settings import show_integration_settings
+        show_integration_settings()
+    except Exception as e:
+        st.error(f"Error loading System Integrations page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
 
 # Footer
 st.sidebar.markdown("---")
