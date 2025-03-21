@@ -2,6 +2,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+import folium
+from streamlit_folium import folium_static
 from utils.data_processing import get_market_trends
 
 def plot_market_trends(df):
@@ -249,3 +251,65 @@ def plot_price_heatmap(df):
     fig.update_layout(coloraxis_colorbar=dict(title="Price", tickprefix="$", tickformat=","))
     
     return fig
+
+def create_property_map(df):
+    """
+    Create an interactive map with property markers
+    
+    Args:
+        df: DataFrame with latitude, longitude, and property information
+        
+    Returns:
+        folium.Map: A map object that can be displayed with folium_static
+    """
+    if df.empty or 'latitude' not in df.columns or 'longitude' not in df.columns:
+        # Return an empty map centered on the US if no data
+        return folium.Map(location=[37.0902, -95.7129], zoom_start=4)
+    
+    # Remove rows with missing lat/long
+    map_data = df.dropna(subset=['latitude', 'longitude']).copy()
+    
+    if map_data.empty:
+        # Return an empty map centered on the US if no valid lat/long
+        return folium.Map(location=[37.0902, -95.7129], zoom_start=4)
+    
+    # Determine map center (average of lat/long)
+    center_lat = map_data['latitude'].mean()
+    center_lng = map_data['longitude'].mean()
+    
+    # Create the map
+    property_map = folium.Map(location=[center_lat, center_lng], zoom_start=12)
+    
+    # Add property markers to the map
+    for _, row in map_data.iterrows():
+        # Create popup content with property details
+        popup_content = f"""
+        <b>{row['address']}</b><br>
+        {row['city']}, {row.get('state', '')}<br>
+        <b>${row['price']:,.0f}</b><br>
+        {row['bedrooms']} bed, {row['bathrooms']} bath<br>
+        {row['sqft']} sqft<br>
+        {row['property_type']}
+        """
+        
+        # Determine marker color based on property type
+        if 'Condo' in str(row['property_type']):
+            color = 'blue'
+        elif 'Multi-Family' in str(row['property_type']):
+            color = 'purple'
+        elif 'Apartment' in str(row['property_type']):
+            color = 'pink'
+        elif 'Townhouse' in str(row['property_type']):
+            color = 'green'
+        else:  # Single-Family, etc.
+            color = 'red'
+        
+        # Add the marker to the map
+        folium.Marker(
+            location=[row['latitude'], row['longitude']],
+            popup=folium.Popup(popup_content, max_width=300),
+            tooltip=f"${row['price']:,.0f} - {row['address']}",
+            icon=folium.Icon(color=color, icon='home', prefix='fa')
+        ).add_to(property_map)
+    
+    return property_map

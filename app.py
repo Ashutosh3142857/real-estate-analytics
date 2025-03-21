@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from utils.data_processing import load_sample_data
 from utils.visualization import plot_market_trends, plot_property_distribution
+from utils.real_estate_api import search_properties_by_location, search_properties_zillow, get_location_suggestions
 import os
 from datetime import datetime
 
@@ -17,6 +18,12 @@ st.set_page_config(
 # Initialize session state variables if they don't exist
 if 'data' not in st.session_state:
     st.session_state.data = load_sample_data()
+    
+if 'location_search' not in st.session_state:
+    st.session_state.location_search = ""
+    
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = pd.DataFrame()
 
 # Sidebar
 st.sidebar.title("Real Estate Analytics")
@@ -75,6 +82,59 @@ else:
 # Main content based on selected page
 if page == "Dashboard":
     st.title("AI-Powered Real Estate Analytics Dashboard")
+    
+    # Global property search feature
+    st.header("🔍 Search Real Estate Worldwide")
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        location_search = st.text_input(
+            "Enter Location (City, ZIP, Address, etc.)",
+            value=st.session_state.location_search,
+            key="location_input"
+        )
+    
+    with col2:
+        search_api = st.radio(
+            "Data Source",
+            options=["Realty Mole", "Realty in US"],
+            horizontal=True
+        )
+        
+        search_button = st.button("Search Properties", key="search_btn")
+    
+    if search_button and location_search:
+        st.session_state.location_search = location_search
+        
+        # Show loading spinner
+        with st.spinner(f"Searching properties in {location_search}..."):
+            # Call the appropriate API based on selection
+            if search_api == "Realty Mole":
+                results = search_properties_by_location(location_search, limit=20)
+            else:
+                results = search_properties_zillow(location_search, limit=20)
+            
+            # Store results in session state
+            if not results.empty:
+                st.session_state.search_results = results
+                st.session_state.data = results  # Update the main dataset with search results
+                st.success(f"Found {len(results)} properties in {location_search}")
+                st.rerun()  # Rerun app to refresh filters with new data
+            else:
+                st.error(f"No properties found in {location_search}")
+    
+    # Help text with API key information
+    with st.expander("ℹ️ About Property Search"):
+        st.write("""
+        This feature allows you to search for real estate properties worldwide using external data APIs.
+        
+        To use this feature, you need to:
+        1. Obtain a RapidAPI key from [RapidAPI](https://rapidapi.com)
+        2. Subscribe to either the "Realty Mole Property API" or "Realty in US API" (or both)
+        3. Add your API key to the environment variables as `RAPIDAPI_KEY`
+        
+        The search will return actual property listings with prices, features, and location data.
+        """)
     
     st.markdown("""
     Welcome to the AI-powered Real Estate Analytics Dashboard. This platform provides comprehensive market insights and 
