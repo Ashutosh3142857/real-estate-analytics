@@ -53,7 +53,7 @@ st.sidebar.image("https://img.icons8.com/fluency/96/000000/real-estate.png", wid
 page = st.sidebar.radio(
     "Navigate to",
     ["Dashboard", "Market Insights", "Market News", "Property Analysis", "Property Valuation", 
-     "Property Matching", "Lead Management", "Investment Calculator", "Marketing Generator", 
+     "Property Matching", "Lead Management", "Lead Crawler", "Investment Calculator", "Marketing Generator", 
      "Messaging Center", "Settings", "System Integrations"]
 )
 
@@ -321,6 +321,16 @@ elif page == "Lead Management":
         show_lead_management()
     except Exception as e:
         st.error(f"Error loading Lead Management page: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
+
+elif page == "Lead Crawler":
+    # Import and run lead crawler page
+    try:
+        from pages.lead_crawler import show_lead_crawler
+        show_lead_crawler()
+    except Exception as e:
+        st.error(f"Error loading Lead Crawler page: {str(e)}")
         import traceback
         st.code(traceback.format_exc(), language="python")
 
