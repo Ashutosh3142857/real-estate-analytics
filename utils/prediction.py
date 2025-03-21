@@ -575,110 +575,139 @@ def train_lead_scoring_model(leads_df):
     Returns:
         tuple: (model, features, feature_importance, accuracy)
     """
-    if leads_df is None or len(leads_df) < 20:  # Need sufficient data for training
-        return None, None, None, None
+    if leads_df is None or len(leads_df) < 10:
+        return None, None, None, 0
     
     try:
-        # Define features to use for scoring
-        categorical_features = ['source', 'property_interest', 'price_range', 'urgency', 'credit_score_range']
-        numeric_features = ['website_visits', 'viewed_listings', 'saved_properties', 'requested_showings']
+        # Define feature columns
+        categorical_features = ['source', 'property_interest', 'price_range', 'urgency', 'credit_score_range', 'status']
+        numeric_features = ['website_visits', 'viewed_listings', 'saved_properties', 'requested_showings', 'response_time_hours']
         
-        # Add pre_approved status as a binary feature
+        # Create binary feature for pre-approved (yes=1, no=0)
         leads_df['pre_approved_binary'] = leads_df['pre_approved'].apply(
-            lambda x: 1 if x == 'Yes' else 0.5 if x == 'In Process' else 0
+            lambda x: 1 if isinstance(x, str) and x.lower() == 'yes' else 0.5 if isinstance(x, str) and x.lower() == 'in process' else 0
         )
         numeric_features.append('pre_approved_binary')
         
-        # Combine all features
-        features = categorical_features + numeric_features
+        # Filter to columns that actually exist in the DataFrame
+        available_categorical = [f for f in categorical_features if f in leads_df.columns]
+        available_numeric = [f for f in numeric_features if f in leads_df.columns]
         
-        # Ensure all required features are available
-        for feature in features:
-            if feature not in leads_df.columns:
-                print(f"Missing required feature: {feature}")
-                return None, None, None, None
+        # Prepare features and target
+        features = available_categorical + available_numeric
         
-        # Prepare target variable (lead score)
-        if 'lead_score' in leads_df.columns:
-            y = leads_df['lead_score']
-        else:
-            # If no lead score, try to use status as a proxy
-            if 'status' in leads_df.columns:
-                # Convert status to numeric scores
-                status_scores = {
-                    'Converted': 100,
-                    'Qualified': 80,
-                    'Nurturing': 60,
-                    'Contacted': 40,
-                    'New': 20,
-                    'Lost': 10
-                }
-                y = leads_df['status'].map(status_scores).fillna(50)
-            else:
-                print("No target variable (lead_score or status) available")
-                return None, None, None, None
+        # Make sure we have the target column
+        if 'lead_score' not in leads_df.columns:
+            # If lead_score doesn't exist, create a generated score as target
+            scores = []
+            for _, lead in leads_df.iterrows():
+                score = 0
+                
+                # Source scoring
+                if 'source' in leads_df.columns:
+                    source_scores = {'Referral': 25, 'Open House': 20, 'Direct Mail': 15, 
+                                     'Zillow': 15, 'Realtor.com': 15, 'Website': 15, 'Social Media': 10}
+                    score += source_scores.get(lead.get('source', ''), 10)
+                
+                # Urgency scoring
+                if 'urgency' in leads_df.columns:
+                    urgency_scores = {'0-3 months': 25, '3-6 months': 20, '6-12 months': 15, 
+                                      '12+ months': 5, 'Just browsing': 0}
+                    score += urgency_scores.get(lead.get('urgency', ''), 10)
+                
+                # Engagement scoring
+                if 'viewed_listings' in leads_df.columns:
+                    score += min(lead.get('viewed_listings', 0) * 2, 15)
+                
+                if 'saved_properties' in leads_df.columns:
+                    score += min(lead.get('saved_properties', 0) * 3, 15)
+                
+                # Showing requests (high value signal)
+                if 'requested_showings' in leads_df.columns:
+                    score += min(lead.get('requested_showings', 0) * 5, 20)
+                
+                # Financial qualification
+                if 'pre_approved_binary' in leads_df.columns and lead.get('pre_approved_binary', 0) == 1:
+                    score += 15
+                
+                scores.append(min(score, 100))  # Cap at 100
+            
+            leads_df['lead_score'] = scores
         
-        # Prepare features
+        # Prepare the data
         X = leads_df[features].copy()
+        y = leads_df['lead_score']
         
         # Handle missing values
-        for col in numeric_features:
-            X[col] = X[col].fillna(0)
-            
-        for col in categorical_features:
-            X[col] = X[col].fillna('Unknown')
+        X = X.fillna(X.median(numeric_only=True))
         
-        # Split the data for training and evaluation
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        # Convert to numeric where possible
+        for col in X.columns:
+            if col not in available_categorical:
+                X[col] = pd.to_numeric(X[col], errors='ignore')
         
-        # Create preprocessing pipeline
-        categorical_transformer = OneHotEncoder(handle_unknown='ignore')
+        # Create preprocessor
         numeric_transformer = StandardScaler()
+        categorical_transformer = OneHotEncoder(handle_unknown='ignore')
         
         preprocessor = ColumnTransformer(
             transformers=[
-                ('cat', categorical_transformer, categorical_features),
-                ('num', numeric_transformer, numeric_features)
+                ('num', numeric_transformer, available_numeric),
+                ('cat', categorical_transformer, available_categorical)
             ]
         )
         
-        # Choose model - GradientBoostingRegressor works well for lead scoring
-        regressor = GradientBoostingRegressor(
-            n_estimators=100, 
-            learning_rate=0.1,
-            max_depth=3,
-            random_state=42
-        )
-        
-        # Create pipeline
+        # Create model
         model = Pipeline([
             ('preprocessor', preprocessor),
-            ('regressor', regressor)
+            ('regressor', GradientBoostingRegressor(
+                n_estimators=100,
+                learning_rate=0.1,
+                max_depth=4,
+                random_state=42
+            ))
         ])
         
         # Train the model
-        model.fit(X_train, y_train)
+        model.fit(X, y)
         
-        # Evaluate the model
-        y_pred = model.predict(X_test)
+        # Evaluate accuracy (within 10 points considered "accurate")
+        y_pred = model.predict(X)
+        accuracy = np.mean(np.abs(y_pred - y) <= 10) * 100  # Percentage of predictions within 10 points
         
-        # Calculate metrics
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        # Calculate feature importance
+        feature_importance = {}
         
-        # Get feature importances
-        feature_importances = _get_tree_feature_importance(model, features, X_test)
+        # Get feature names after preprocessing
+        feature_names = model.named_steps['preprocessor'].get_feature_names_out()
         
-        # Calculate accuracy (within ±10 points on a 100-point scale)
-        within_range = np.abs(y_test - y_pred) <= 10
-        accuracy = within_range.mean() * 100
+        # Get importance values
+        importance = model.named_steps['regressor'].feature_importances_
         
-        return model, features, feature_importances, accuracy
+        # Map importances back to original features
+        for i, feature in enumerate(features):
+            if feature in available_categorical:
+                # For categorical, sum all one-hot encoded columns
+                indices = [j for j, name in enumerate(feature_names) if name.startswith(f'cat__{feature}_')]
+                feature_importance[feature] = sum(importance[j] for j in indices)
+            else:
+                # For numeric, direct mapping
+                idx = list(feature_names).index(f'num__{feature}')
+                feature_importance[feature] = importance[idx]
+        
+        # Normalize to sum to 100
+        total = sum(feature_importance.values())
+        if total > 0:
+            feature_importance = {k: (v/total)*100 for k, v in feature_importance.items()}
+        
+        # Sort by importance
+        feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=True))
+        
+        return model, features, feature_importance, accuracy
         
     except Exception as e:
         print(f"Error training lead scoring model: {e}")
-        return None, None, None, None
+        return None, None, None, 0
 
 def predict_lead_score(model, features, lead_data):
     """

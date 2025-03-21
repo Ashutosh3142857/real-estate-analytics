@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import random
+from utils.prediction import train_lead_scoring_model, predict_lead_score, get_lead_insights
 
 def show_lead_management():
     st.title("AI-Powered Lead Qualification & Nurturing")
@@ -294,11 +295,59 @@ def show_lead_qualification():
         if not name or not email:
             st.error("Please enter at least a name and email address.")
         else:
-            # Calculate lead score based on inputs
-            score = calculate_lead_score(
-                source, property_interest, price_range, urgency, website_visits,
-                viewed_listings, saved_properties, requested_showings, pre_approved, credit_score_range
-            )
+            # Use the ML scoring model if available in session state
+            if 'lead_scoring_model' not in st.session_state:
+                # If we don't have a model yet, generate sample data and train one
+                if 'leads' in st.session_state and len(st.session_state.leads) >= 20:
+                    leads_df = st.session_state.leads
+                else:
+                    # Generate sample leads for training
+                    leads_df = generate_sample_leads(50)
+                    if 'leads' not in st.session_state:
+                        st.session_state.leads = leads_df
+                
+                # Train the model
+                with st.spinner("Training AI lead scoring model..."):
+                    model, model_features, feature_importance, accuracy = train_lead_scoring_model(leads_df)
+                    
+                    # Store in session state
+                    st.session_state.lead_scoring_model = model
+                    st.session_state.lead_scoring_features = model_features
+                    st.session_state.lead_scoring_importance = feature_importance
+                    st.session_state.lead_scoring_accuracy = accuracy
+            
+            # Prepare lead data
+            lead_data = {
+                'source': source,
+                'property_interest': property_interest,
+                'price_range': price_range,
+                'urgency': urgency,
+                'website_visits': website_visits,
+                'viewed_listings': viewed_listings,
+                'saved_properties': saved_properties,
+                'requested_showings': requested_showings,
+                'pre_approved': pre_approved,
+                'credit_score_range': credit_score_range
+            }
+            
+            # Get lead score using ML model
+            if 'lead_scoring_model' in st.session_state and st.session_state.lead_scoring_model is not None:
+                model = st.session_state.lead_scoring_model
+                features = st.session_state.lead_scoring_features
+                feature_importance = st.session_state.lead_scoring_importance
+                
+                # Use the ML model to predict the score
+                score = predict_lead_score(model, features, lead_data)
+                
+                # Get lead insights
+                insights = get_lead_insights(model, features, lead_data, feature_importance)
+            else:
+                # Fallback to the rule-based approach if model is not available
+                score = calculate_lead_score(
+                    source, property_interest, price_range, urgency, website_visits,
+                    viewed_listings, saved_properties, requested_showings, pre_approved, credit_score_range
+                )
+                insights = None
             
             # Display the score
             st.subheader("Lead Qualification Results")
@@ -333,63 +382,164 @@ def show_lead_qualification():
             
             with col2:
                 # Lead classification and recommendations
-                if score >= 80:
-                    st.success("### Hot Lead - High Priority")
-                    st.markdown("""
-                    **Recommendations:**
-                    - Contact immediately (within 1 hour)
-                    - Offer personalized property recommendations
-                    - Schedule showing for properties matching their criteria
-                    """)
-                elif score >= 60:
-                    st.warning("### Warm Lead - Medium Priority")
-                    st.markdown("""
-                    **Recommendations:**
-                    - Contact within 24 hours
-                    - Provide market information and buying guides
-                    - Set up automated property alerts
-                    """)
+                if score is not None:
+                    if score >= 80:
+                        st.success("### Hot Lead - High Priority")
+                        st.markdown("""
+                        **Recommendations:**
+                        - Contact immediately (within 1 hour)
+                        - Offer personalized property recommendations
+                        - Schedule showing for properties matching their criteria
+                        """)
+                    elif score >= 60:
+                        st.warning("### Warm Lead - Medium Priority")
+                        st.markdown("""
+                        **Recommendations:**
+                        - Contact within 24 hours
+                        - Provide market information and buying guides
+                        - Set up automated property alerts
+                        """)
+                    else:
+                        st.info("### Cold Lead - Nurture")
+                        st.markdown("""
+                        **Recommendations:**
+                        - Add to nurture campaign
+                        - Send educational content weekly
+                        - Re-evaluate after 30 days of engagement tracking
+                        """)
                 else:
-                    st.info("### Cold Lead - Nurture")
-                    st.markdown("""
-                    **Recommendations:**
-                    - Add to nurture campaign
-                    - Send educational content weekly
-                    - Re-evaluate after 30 days of engagement tracking
-                    """)
+                    st.error("Unable to calculate lead score. Please check your inputs.")
             
             # Detailed score breakdown
             st.subheader("Score Breakdown")
             
-            factor_scores = {
-                "Lead Source Quality": get_source_score(source),
-                "Property Interest Match": get_property_interest_score(property_interest, price_range),
-                "Purchase Timeline": get_urgency_score(urgency),
-                "Website Engagement": get_engagement_score(website_visits, viewed_listings, saved_properties),
-                "Showing Requests": get_showing_score(requested_showings),
-                "Financial Qualification": get_financial_score(pre_approved, credit_score_range)
-            }
-            
-            # Create DataFrame for visualization
-            breakdown_df = pd.DataFrame({
-                'Factor': list(factor_scores.keys()),
-                'Score Contribution': list(factor_scores.values())
-            })
-            
-            # Sort by score contribution
-            breakdown_df = breakdown_df.sort_values('Score Contribution', ascending=False)
-            
-            # Create horizontal bar chart
-            fig = px.bar(
-                breakdown_df,
-                y='Factor',
-                x='Score Contribution',
-                orientation='h',
-                title='Lead Score Contribution Factors',
-                template='plotly_white',
-                color='Score Contribution',
-                color_continuous_scale=px.colors.sequential.Viridis
-            )
+            # Show AI model insights if available, otherwise use rule-based
+            if 'lead_scoring_model' in st.session_state and st.session_state.lead_scoring_model is not None and insights:
+                st.write("### AI Model Analysis")
+                
+                # Display ML model accuracy if available
+                if 'lead_scoring_accuracy' in st.session_state:
+                    accuracy = st.session_state.lead_scoring_accuracy
+                    st.info(f"Model accuracy: {accuracy:.1f}% (predictions within ±10 points)")
+                
+                # Show contributing factors from insights
+                if insights.get('contributing_factors'):
+                    contrib_factors = []
+                    
+                    for factor in insights['contributing_factors']:
+                        # Determine visualization value based on impact and direction
+                        impact_value = 0
+                        if factor['impact'] == 'high':
+                            impact_value = 35 if factor['direction'] == 'positive' else -35
+                        elif factor['impact'] == 'medium':
+                            impact_value = 20 if factor['direction'] == 'positive' else -20
+                        else:  # low
+                            impact_value = 10 if factor['direction'] == 'positive' else -10
+                            
+                        # Format feature name for display
+                        feature_name = factor['feature'].replace('_', ' ').title()
+                        if feature_name == 'Pre Approved Binary':
+                            feature_name = 'Mortgage Pre-Approval'
+                        
+                        # Add value display
+                        if isinstance(factor['value'], (int, float)) and factor['feature'] not in ['pre_approved_binary']:
+                            feature_name = f"{feature_name} ({factor['value']})"
+                        elif factor['feature'] in ['pre_approved', 'credit_score_range']:
+                            feature_name = f"{feature_name}: {factor['value']}"
+                            
+                        contrib_factors.append({
+                            'Factor': feature_name,
+                            'Impact': abs(impact_value),
+                            'Direction': 'Positive' if factor['direction'] == 'positive' else 'Negative',
+                            'Contribution': impact_value
+                        })
+                    
+                    # Create DataFrame for visualization
+                    contrib_df = pd.DataFrame(contrib_factors)
+                    
+                    # Create horizontal bar chart with colors for positive/negative
+                    fig = px.bar(
+                        contrib_df,
+                        y='Factor',
+                        x='Contribution',
+                        orientation='h',
+                        title='Lead Score Contributing Factors',
+                        template='plotly_white',
+                        color='Direction',
+                        color_discrete_map={'Positive': 'green', 'Negative': 'red'},
+                        text='Direction'
+                    )
+                    
+                    # Update layout for better visualization
+                    fig.update_traces(textposition='inside', insidetextanchor='middle')
+                    fig.update_layout(height=400)
+                    
+                    # Show AI recommendations
+                    if insights.get('recommendations'):
+                        st.write("### AI Recommendations")
+                        for rec in insights['recommendations']:
+                            priority_color = "red" if rec['priority'] == 'high' else "orange" if rec['priority'] == 'medium' else "blue"
+                            st.markdown(f"- <span style='color:{priority_color};font-weight:bold;'>{rec['priority'].upper()}</span>: **{rec['action']}** - {rec['description']}", unsafe_allow_html=True)
+                else:
+                    # If no detailed insights, show feature importance from training
+                    if 'lead_scoring_importance' in st.session_state and st.session_state.lead_scoring_importance is not None:
+                        feature_importance = st.session_state.lead_scoring_importance
+                        importance_df = pd.DataFrame({
+                            'Factor': [f.replace('_', ' ').title() for f in feature_importance.keys()],
+                            'Score Contribution': list(feature_importance.values())
+                        })
+                    else:
+                        # Fallback if no feature importance available
+                        importance_df = pd.DataFrame({
+                            'Factor': ["Model not fully trained"],
+                            'Score Contribution': [100]
+                        })
+                    
+                    # Sort by contribution
+                    importance_df = importance_df.sort_values('Score Contribution', descending=True)
+                    
+                    # Create horizontal bar chart
+                    fig = px.bar(
+                        importance_df,
+                        y='Factor',
+                        x='Score Contribution',
+                        orientation='h',
+                        title='Lead Score Contribution Factors (AI Model)',
+                        template='plotly_white',
+                        color='Score Contribution',
+                        color_continuous_scale=px.colors.sequential.Viridis
+                    )
+            else:
+                # Classic rule-based breakdown as fallback
+                factor_scores = {
+                    "Lead Source Quality": get_source_score(source),
+                    "Property Interest Match": get_property_interest_score(property_interest, price_range),
+                    "Purchase Timeline": get_urgency_score(urgency),
+                    "Website Engagement": get_engagement_score(website_visits, viewed_listings, saved_properties),
+                    "Showing Requests": get_showing_score(requested_showings),
+                    "Financial Qualification": get_financial_score(pre_approved, credit_score_range)
+                }
+                
+                # Create DataFrame for visualization
+                breakdown_df = pd.DataFrame({
+                    'Factor': list(factor_scores.keys()),
+                    'Score Contribution': list(factor_scores.values())
+                })
+                
+                # Sort by score contribution
+                breakdown_df = breakdown_df.sort_values('Score Contribution', ascending=False)
+                
+                # Create horizontal bar chart
+                fig = px.bar(
+                    breakdown_df,
+                    y='Factor',
+                    x='Score Contribution',
+                    orientation='h',
+                    title='Lead Score Contribution Factors (Rule-Based)',
+                    template='plotly_white',
+                    color='Score Contribution',
+                    color_continuous_scale=px.colors.sequential.Viridis
+                )
             
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
