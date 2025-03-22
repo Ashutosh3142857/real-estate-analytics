@@ -71,8 +71,46 @@ def show_search_campaigns_tab():
             default=["google", "bing"]
         )
         
+        # Target type selection
+        st.subheader("Target Types")
+        st.write("Select what type of leads you want to focus on:")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            target_agent = st.checkbox("Real Estate Agents", value=True, help="Find real estate agents and realtors")
+            target_broker = st.checkbox("Brokers", value=True, help="Find real estate brokers and brokerage firms")
+            target_investor = st.checkbox("Investors", value=False, help="Find real estate investors and investment firms")
+        
+        with col2:
+            target_buyer = st.checkbox("Buyers", value=False, help="Find potential property buyers")
+            target_seller = st.checkbox("Sellers", value=False, help="Find potential property sellers")
+            target_property = st.checkbox("Property Listings", value=True, help="Find property listings and details")
+        
+        # Location targeting
+        st.subheader("Location Targeting")
+        location = st.text_input(
+            "Target Location (optional)",
+            placeholder="e.g., New York, NY or Mumbai, India",
+            help="Add a location to focus your search on a specific area"
+        )
+        
         # Number of results per keyword
         num_results = st.slider("Results per Keyword", 5, 50, 20)
+        
+        # Advanced options
+        with st.expander("Advanced Options"):
+            min_contact_info = st.multiselect(
+                "Required Contact Information",
+                ["name", "email", "phone", "company"],
+                default=["email"],
+                help="Select which contact information fields are required for a lead to be considered valid"
+            )
+            
+            min_lead_score = st.slider(
+                "Minimum Lead Score",
+                0, 100, 30,
+                help="Only include leads with at least this score (higher scores indicate more complete and reliable information)"
+            )
         
         if st.button("Create Campaign"):
             if not campaign_name:
@@ -81,14 +119,36 @@ def show_search_campaigns_tab():
                 st.error("Please enter at least one keyword.")
             elif not search_engines:
                 st.error("Please select at least one search engine.")
+            elif not (target_agent or target_broker or target_investor or target_buyer or target_seller or target_property):
+                st.error("Please select at least one target type.")
             else:
                 keywords = [k.strip() for k in keywords_text.split("\n") if k.strip()]
                 
+                # Create target types list
+                target_types = []
+                if target_agent:
+                    target_types.append("agent")
+                if target_broker:
+                    target_types.append("broker")
+                if target_investor:
+                    target_types.append("investor")
+                if target_buyer:
+                    target_types.append("buyer")
+                if target_seller:
+                    target_types.append("seller")
+                if target_property:
+                    target_types.append("property")
+                
+                # Save the campaign with enhanced options
                 campaign_id = save_lead_campaign(
                     campaign_name, 
                     keywords, 
                     search_engines, 
-                    num_results
+                    num_results,
+                    target_types=target_types,
+                    location=location,
+                    min_lead_score=min_lead_score,
+                    required_fields=min_contact_info
                 )
                 
                 st.success(f"Campaign '{campaign_name}' created successfully!")
@@ -105,6 +165,14 @@ def show_search_campaigns_tab():
                 with col1:
                     st.write(f"**{campaign['name']}**")
                     st.caption(f"Created: {campaign['created_at'][:10]}")
+                    
+                    # Show target types and location if available in new campaigns
+                    if 'target_types' in campaign:
+                        target_types_str = ", ".join(campaign['target_types'])
+                        st.caption(f"Targeting: {target_types_str}")
+                    
+                    if 'location' in campaign and campaign['location']:
+                        st.caption(f"Location: {campaign['location']}")
                 
                 with col2:
                     keywords_str = ", ".join(campaign['keywords'][:3])
@@ -119,15 +187,26 @@ def show_search_campaigns_tab():
                     if campaign.get("last_run"):
                         st.write(f"Status: {campaign['status']}")
                         st.write(f"Last run: {campaign['last_run'][:10]}")
+                        
+                        # Show lead count if available
+                        if 'lead_count' in campaign:
+                            st.write(f"Leads: {campaign['lead_count']}")
                     else:
                         st.write("Status: Not run yet")
                     
-                    if st.button(f"Run Campaign", key=f"run_{campaign['id']}"):
-                        with st.spinner(f"Running campaign '{campaign['name']}' - this may take a few minutes..."):
-                            contacts = run_lead_campaign(campaign['id'])
-                            st.success(f"Campaign completed! Found {len(contacts)} potential contacts.")
-                            # Add a tab switch button here
-                            st.button(f"View Results", key=f"view_{campaign['id']}")
+                    run_col, view_col = st.columns(2)
+                    with run_col:
+                        if st.button(f"Run", key=f"run_{campaign['id']}"):
+                            with st.spinner(f"Running campaign '{campaign['name']}' - this may take a few minutes..."):
+                                contacts = run_lead_campaign(campaign['id'])
+                                st.success(f"Campaign completed! Found {len(contacts)} potential contacts.")
+                    
+                    with view_col:
+                        if st.button(f"View", key=f"view_{campaign['id']}"):
+                            # Store the selected campaign ID in session state for the results tab
+                            st.session_state.selected_campaign_id = campaign['id']
+                            st.session_state.active_tab = "Contact Results"
+                            st.rerun()
             
             st.divider()
 
@@ -135,6 +214,10 @@ def show_search_campaigns_tab():
 def show_contact_results_tab():
     """Display contact results from campaigns"""
     st.header("Contact Results")
+    
+    # Initialize session state for active tab if needed
+    if 'selected_campaign_id' not in st.session_state:
+        st.session_state.selected_campaign_id = None
     
     # Get existing campaigns
     campaigns = get_lead_campaigns()
@@ -145,14 +228,29 @@ def show_contact_results_tab():
     
     # Campaign selector
     campaign_names = [f"{c['name']} (ID: {c['id']})" for c in campaigns]
+    
+    # If we have a selected campaign ID from another tab, use it
+    selected_index = 0
+    if st.session_state.selected_campaign_id:
+        for i, c in enumerate(campaigns):
+            if c['id'] == st.session_state.selected_campaign_id:
+                selected_index = i
+                break
+    
     selected_campaign = st.selectbox(
         "Select Campaign",
         campaign_names,
-        index=0
+        index=selected_index
     )
     
     # Extract campaign ID from selection
     selected_id = selected_campaign.split("ID: ")[1].strip(")")
+    
+    # Update session state with selected campaign
+    st.session_state.selected_campaign_id = selected_id
+    
+    # Get the selected campaign data
+    selected_campaign_data = next((c for c in campaigns if c['id'] == selected_id), None)
     
     # Get contacts for the selected campaign
     contacts = get_campaign_contacts(selected_id)
@@ -164,17 +262,55 @@ def show_contact_results_tab():
     # Display contacts
     st.write(f"Found {len(contacts)} potential contacts.")
     
+    # Create tabs for different contact types if we have lead type information
+    if any('lead_type' in contact for contact in contacts):
+        # Count contacts by lead type
+        lead_types = {}
+        for contact in contacts:
+            lead_type = contact.get('lead_type', 'other')
+            lead_types[lead_type] = lead_types.get(lead_type, 0) + 1
+        
+        # Create tabs for each lead type plus an "All" tab
+        lead_type_tabs = ["All"] + sorted(lead_types.keys())
+        tabs = st.tabs(lead_type_tabs)
+        
+        for i, tab_name in enumerate(lead_type_tabs):
+            with tabs[i]:
+                # Filter contacts by lead type
+                if tab_name == "All":
+                    filtered_by_type = contacts
+                else:
+                    filtered_by_type = [c for c in contacts if c.get('lead_type', 'other') == tab_name]
+                
+                # Display the filtered contacts
+                display_filtered_contacts(filtered_by_type, tab_name)
+    else:
+        # If no lead type data, just display all contacts
+        display_filtered_contacts(contacts, "All")
+
+
+def display_filtered_contacts(contacts, lead_type="All"):
+    """Helper function to display and filter contacts"""
     # Filter options
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        min_score = st.slider("Minimum Lead Score", 0, 100, 20)
+        min_score = st.slider("Minimum Lead Score", 0, 100, 20, key=f"score_{lead_type}")
     
     with col2:
         required_fields = st.multiselect(
             "Required Fields",
             ["name", "email", "phone", "company"],
-            default=["email"]
+            default=["email"],
+            key=f"fields_{lead_type}"
+        )
+    
+    with col3:
+        sort_by = st.selectbox(
+            "Sort By",
+            ["Lead Score", "Name", "Company", "Email"],
+            index=0,
+            key=f"sort_{lead_type}"
         )
     
     # Apply filters
@@ -186,49 +322,172 @@ def show_contact_results_tab():
     
     st.write(f"Displaying {len(filtered_contacts)} contacts after filtering.")
     
-    # Sort by score
-    filtered_contacts.sort(key=lambda x: x.get("lead_score", 0), reverse=True)
+    # Sort contacts
+    if sort_by == "Lead Score":
+        filtered_contacts.sort(key=lambda x: x.get("lead_score", 0), reverse=True)
+    elif sort_by == "Name":
+        filtered_contacts.sort(key=lambda x: x.get("name", "").lower())
+    elif sort_by == "Company":
+        filtered_contacts.sort(key=lambda x: x.get("company", "").lower())
+    elif sort_by == "Email":
+        filtered_contacts.sort(key=lambda x: x.get("email", "").lower())
     
     # Display as table
     if filtered_contacts:
         # Convert to DataFrame for display
         df = pd.DataFrame(filtered_contacts)
         
-        # Select and reorder columns
-        display_columns = ["name", "email", "phone", "company", "lead_score", "keyword"]
-        display_df = df[display_columns] if all(col in df.columns for col in display_columns) else df
+        # Select and reorder columns based on available data
+        standard_columns = ["name", "email", "phone", "company", "lead_score"]
+        
+        # Add lead type if available
+        if 'lead_type' in df.columns:
+            standard_columns.insert(4, "lead_type")
+            
+        # Add job title if available
+        if 'job_title' in df.columns:
+            standard_columns.insert(3, "job_title")
+            
+        # Add keyword and source columns
+        standard_columns.extend(["keyword", "domain"])
+        
+        # Filter to only columns that exist in the DataFrame
+        display_columns = [col for col in standard_columns if col in df.columns]
+        
+        # Create display DataFrame with only the selected columns
+        display_df = df[display_columns] if len(display_columns) > 0 else df
         
         # Show table
         st.dataframe(display_df, use_container_width=True)
         
+        # Button to import all filtered contacts
+        if st.button(f"Import All {len(filtered_contacts)} Contacts", key=f"import_all_{lead_type}"):
+            try:
+                import_count = import_contacts_to_database(filtered_contacts)
+                st.success(f"Successfully imported {import_count} contacts as leads!")
+            except Exception as e:
+                st.error(f"Error importing contacts: {str(e)}")
+        
         # Display contact details in expanders
         for i, contact in enumerate(filtered_contacts):
-            with st.expander(f"Contact Details: {contact.get('name') or contact.get('email') or f'Contact #{i+1}'}"):
-                col1, col2 = st.columns(2)
+            # Format the expander title based on available information
+            title_parts = []
+            if contact.get('name'):
+                title_parts.append(contact['name'])
+            if contact.get('job_title'):
+                title_parts.append(contact['job_title'])
+            if contact.get('company') and not title_parts:
+                title_parts.append(contact['company'])
+                
+            expander_title = " - ".join(title_parts) if title_parts else f"Contact #{i+1}"
+            if contact.get('lead_type'):
+                expander_title = f"{contact['lead_type'].title()}: {expander_title}"
+                
+            with st.expander(expander_title):
+                col1, col2 = st.columns([3, 2])
                 
                 with col1:
-                    st.write(f"**Name:** {contact.get('name', 'Not found')}")
-                    st.write(f"**Email:** {contact.get('email', 'Not found')}")
-                    st.write(f"**Phone:** {contact.get('phone', 'Not found')}")
-                    st.write(f"**Company:** {contact.get('company', 'Not found')}")
+                    # Basic contact info
+                    st.subheader("Contact Information")
+                    if contact.get('name'):
+                        st.write(f"**Name:** {contact['name']}")
+                    if contact.get('job_title'):
+                        st.write(f"**Job Title:** {contact['job_title']}")
+                    if contact.get('email'):
+                        st.write(f"**Email:** {contact['email']}")
+                    if contact.get('phone'):
+                        st.write(f"**Phone:** {contact['phone']}")
+                    if contact.get('company'):
+                        st.write(f"**Company:** {contact['company']}")
+                    if contact.get('location'):
+                        st.write(f"**Location:** {contact['location']}")
+                        
+                    # Social profiles if available
+                    if contact.get('social_profiles') and any(contact['social_profiles'].values()):
+                        st.subheader("Social Profiles")
+                        social_profiles = contact['social_profiles']
+                        for platform, profile in social_profiles.items():
+                            if profile:
+                                platform_name = platform.capitalize()
+                                st.write(f"**{platform_name}:** {profile}")
                 
                 with col2:
-                    st.write(f"**Lead Score:** {contact.get('lead_score', 0)}")
-                    st.write(f"**Keyword:** {contact.get('keyword', 'Not specified')}")
-                    st.write(f"**Source URL:** [{contact.get('source_url', 'Unknown').split('/')[2]}]({contact.get('source_url', '#')})")
+                    # Lead quality info
+                    st.subheader("Lead Quality")
+                    lead_score = contact.get('lead_score', 0)
+                    score_color = "red" if lead_score < 30 else "orange" if lead_score < 60 else "green"
+                    st.markdown(f"**Lead Score:** <span style='color:{score_color};font-weight:bold'>{lead_score}</span>", unsafe_allow_html=True)
+                    
+                    if contact.get('lead_type'):
+                        st.write(f"**Lead Type:** {contact['lead_type'].title()}")
+                    
+                    st.write(f"**Found via:** {contact.get('keyword', 'Not specified')}")
+                    
+                    # Source information
+                    st.subheader("Source")
+                    if contact.get('source_url'):
+                        try:
+                            domain = urlparse(contact['source_url']).netloc
+                            st.write(f"**Website:** [{domain}]({contact['source_url']})")
+                        except:
+                            st.write(f"**Source URL:** [{contact.get('source_url', '#')}]")
+                    
+                # Target relevance if available
+                if contact.get('target_relevance') and any(contact['target_relevance'].values()):
+                    st.subheader("Relevance Scores")
+                    relevance = contact['target_relevance']
+                    
+                    # Create a horizontal bar chart of relevance scores
+                    relevance_data = {k.title(): v for k, v in relevance.items() if v > 0}
+                    if relevance_data:
+                        # Sort by relevance score
+                        sorted_relevance = dict(sorted(relevance_data.items(), key=lambda x: x[1], reverse=True))
+                        
+                        # Display as a simple text with color coding
+                        for role, score in sorted_relevance.items():
+                            score_color = "red" if score < 5 else "orange" if score < 15 else "green"
+                            st.markdown(f"**{role}:** <span style='color:{score_color}'>{score}</span>/30", unsafe_allow_html=True)
                 
                 # Snippet from the source page
                 if contact.get("snippet"):
-                    st.write("**Page Snippet:**")
+                    st.subheader("Page Snippet")
                     st.info(contact.get("snippet"))
                 
-                # Import single contact
-                if st.button("Import as Lead", key=f"import_{i}"):
-                    try:
-                        import_contacts_to_database([contact])
-                        st.success(f"Contact imported successfully as a lead!")
-                    except Exception as e:
-                        st.error(f"Error importing contact: {str(e)}")
+                # Enhanced query if available
+                if contact.get("enhanced_query") and contact.get("enhanced_query") != contact.get("query"):
+                    st.subheader("Search Information")
+                    st.write(f"**Original Query:** {contact.get('query', '')}")
+                    st.write(f"**Enhanced Query:** {contact.get('enhanced_query', '')}")
+                
+                # Action buttons
+                st.subheader("Actions")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Import single contact
+                    if st.button("Import as Lead", key=f"import_{i}_{lead_type}"):
+                        try:
+                            import_contacts_to_database([contact])
+                            st.success(f"Contact imported successfully as a lead!")
+                        except Exception as e:
+                            st.error(f"Error importing contact: {str(e)}")
+                
+                with col2:
+                    # Email the contact (prepare an email)
+                    if contact.get('email') and st.button("Email Contact", key=f"email_{i}_{lead_type}"):
+                        # Format with mailto link
+                        subject = f"Regarding your real estate {contact.get('lead_type', 'interests')}"
+                        body = f"Hello {contact.get('name', 'there')},\n\nI wanted to reach out regarding your real estate {contact.get('lead_type', 'interests')}..."
+                        mailto_link = f"mailto:{contact['email']}?subject={subject}&body={body}"
+                        
+                        # Open in a new tab using JavaScript
+                        js = f"""
+                        <a href="{mailto_link}" target="_blank" id="mailto_link_{i}">Click here if the email doesn't open automatically</a>
+                        <script>
+                            window.open("{mailto_link}", "_blank");
+                        </script>
+                        """
+                        st.markdown(js, unsafe_allow_html=True)
     else:
         st.info("No contacts match the current filters.")
 

@@ -428,12 +428,13 @@ def direct_bing_search(query, num_results=10):
         return fallback_search_results(query, num_results)
 
 
-def extract_contact_info(url):
+def extract_contact_info(url, target_types=None):
     """
-    Extract contact information from a webpage.
+    Extract contact information from a webpage, with optimizations for real estate targets.
     
     Args:
         url (str): URL of the webpage to analyze
+        target_types (list): Types of targets to focus on ('agent', 'broker', 'property', 'investor')
         
     Returns:
         dict: Dictionary containing extracted contact information
@@ -441,6 +442,9 @@ def extract_contact_info(url):
     # Download the page content
     try:
         logger.info(f"Extracting contact info from: {url}")
+        
+        if target_types is None:
+            target_types = ["agent", "broker", "property"]
         
         # Skip some domains that are unlikely to contain useful contact information
         parsed_url = urlparse(url)
@@ -484,6 +488,35 @@ def extract_contact_info(url):
         # Also parse with BeautifulSoup for structured extraction
         soup = BeautifulSoup(downloaded, 'html.parser')
         
+        # Prepare target-specific extraction patterns
+        target_patterns = {
+            "agent": {
+                "name_indicator": ["agent", "realtor", "real estate agent"],
+                "context_terms": ["listings", "properties", "real estate", "experience", "license"],
+                "job_titles": ["real estate agent", "realtor", "agent", "sales associate"]
+            },
+            "broker": {
+                "name_indicator": ["broker", "brokerage", "realty", "real estate broker"],
+                "context_terms": ["listings", "real estate", "brokerage", "agents", "firm"],
+                "job_titles": ["broker", "principal broker", "managing broker", "broker/owner"]
+            },
+            "investor": {
+                "name_indicator": ["investor", "investment", "capital", "fund", "investing"],
+                "context_terms": ["investment", "property investment", "portfolio", "returns", "capital"],
+                "job_titles": ["investor", "investment manager", "fund manager", "principal"]
+            },
+            "buyer": {
+                "name_indicator": ["buyer", "looking", "searching", "interested", "purchase"],
+                "context_terms": ["looking for", "interested in", "searching for", "want to buy"],
+                "job_titles": ["home buyer", "property seeker", "buyer"]
+            },
+            "seller": {
+                "name_indicator": ["seller", "selling", "sell", "list", "selling"],
+                "context_terms": ["selling my", "list my", "value my", "my home", "my property"],
+                "job_titles": ["home seller", "property owner", "seller"]
+            }
+        }
+        
         # Email extraction - look in text and href="mailto:" links
         emails = []
         
@@ -500,18 +533,36 @@ def extract_contact_info(url):
                     emails.append(email)
         
         # Filter out common noreply/info emails unless they're the only ones available
-        filtered_emails = [e for e in emails if not any(noreply in e.lower() for noreply in ['noreply', 'no-reply', 'donotreply'])]
+        filtered_emails = [e for e in emails if not any(noreply in e.lower() for noreply in ['noreply', 'no-reply', 'donotreply', 'donot-reply'])]
         if filtered_emails:
             emails = filtered_emails
         
-        # Get the most promising email (prefer business domains over free email providers)
+        # Further filter out generic emails unless they're the only ones available
+        generic_filtered = [e for e in emails if not any(generic in e.lower() for generic in ['info@', 'contact@', 'hello@', 'general@', 'support@', 'sales@'])]
+        if generic_filtered:
+            emails = generic_filtered
+        
+        # Get the most promising email
+        # For real estate, prioritize professional domains and especially real estate domains
         email = ""
         if emails:
-            business_emails = [e for e in emails if not any(free_domain in e.lower() for free_domain in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com'])]
-            if business_emails:
-                email = business_emails[0]
+            real_estate_domains = [
+                'realtor.com', 'zillow.com', 'trulia.com', 'homes.com', 'redfin.com',
+                'century21.com', 'coldwellbanker.com', 'remax.com', 'kw.com', 'bhhs.com',
+                'elliman.com', 'compass.com', 'ziprealty.com', 'movoto.com', 'homefinder.com'
+            ]
+            
+            # First prioritize real estate specific domains
+            re_specific_emails = [e for e in emails if any(re_dom in e.split('@')[1].lower() for re_dom in real_estate_domains)]
+            if re_specific_emails:
+                email = re_specific_emails[0]
             else:
-                email = emails[0]
+                # Then prioritize business domains over free email providers
+                business_emails = [e for e in emails if not any(free_dom in e.split('@')[1].lower() for free_dom in ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'protonmail.com', 'icloud.com', 'mail.com'])]
+                if business_emails:
+                    email = business_emails[0]
+                else:
+                    email = emails[0]
         
         # Phone extraction with improved pattern matching
         phones = []
@@ -523,18 +574,41 @@ def extract_contact_info(url):
             r'\b\+\d{1,3}[-. ]?\d{3,14}\b'  # International format with country code
         ]
         
+        # For property listings, look more aggressively for phone numbers
+        if "property" in target_types:
+            # Look in specific contact-related sections first
+            contact_sections = []
+            for heading in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+                heading_text = heading.text.strip().lower()
+                if any(term in heading_text for term in ['contact', 'call', 'phone', 'agent', 'get in touch']):
+                    # Get the next few elements
+                    next_elements = []
+                    next_el = heading.find_next()
+                    for _ in range(5):  # Look at the next 5 elements
+                        if next_el:
+                            next_elements.append(next_el)
+                            next_el = next_el.find_next()
+                    contact_sections.extend(next_elements)
+            
+            # Look for phone numbers in these sections first
+            for section in contact_sections:
+                for pattern in phone_patterns:
+                    found_phones = re.findall(pattern, section.text)
+                    phones.extend(found_phones)
+        
+        # Standard phone extraction from the whole page
         for pattern in phone_patterns:
             phones.extend(re.findall(pattern, downloaded))
         
         # Look for elements with specific classes or IDs that might contain phone numbers
-        phone_indicators = ['phone', 'tel', 'contact', 'call']
+        phone_indicators = ['phone', 'tel', 'contact', 'call', 'agent', 'broker']
         for indicator in phone_indicators:
-            for element in soup.find_all(class_=lambda c: c and indicator in c.lower()):
+            for element in soup.find_all(class_=lambda c: c and indicator in str(c).lower()):
                 for pattern in phone_patterns:
                     found_phones = re.findall(pattern, element.text)
                     phones.extend(found_phones)
                     
-            for element in soup.find_all(id=lambda i: i and indicator in i.lower()):
+            for element in soup.find_all(id=lambda i: i and indicator in str(i).lower()):
                 for pattern in phone_patterns:
                     found_phones = re.findall(pattern, element.text)
                     phones.extend(found_phones)
@@ -547,13 +621,40 @@ def extract_contact_info(url):
                 if phone_num:
                     phones.append(phone_num)
         
-        # Clean up phone numbers
-        phone = phones[0] if phones else ""
+        # Clean and standardize phone numbers
+        cleaned_phones = []
+        for phone in phones:
+            # Remove all non-digit characters for comparison
+            digits_only = re.sub(r'\D', '', phone)
+            if len(digits_only) >= 10:  # Most phone numbers have at least 10 digits
+                cleaned_phones.append(phone)
+        
+        # Remove duplicates (based on digit-only version)
+        seen_digit_phones = set()
+        unique_phones = []
+        for phone in cleaned_phones:
+            digits_only = re.sub(r'\D', '', phone)
+            if digits_only not in seen_digit_phones:
+                seen_digit_phones.add(digits_only)
+                unique_phones.append(phone)
+        
+        phone = unique_phones[0] if unique_phones else ""
         
         # Company name extraction - look for common patterns
         company = ""
         company_candidates = []
         
+        # Look for real estate specific company names first
+        real_estate_company_patterns = [
+            r'((?:[A-Z][a-z]+\s*)+(?:Realty|Real Estate|Properties|Homes|Realtors|Real Estate Group|Brokerage))',
+            r'((?:[A-Z][a-z]+\s*)+(?:Realty|Real Estate|Properties|Homes|Realtors|Real Estate Group|Brokerage)(?:\s+(?:Inc|LLC|Group|Team))?)',
+        ]
+        
+        for pattern in real_estate_company_patterns:
+            company_matches = re.findall(pattern, downloaded)
+            if company_matches:
+                company_candidates.extend(company_matches)
+                
         # Look in meta tags
         for meta_tag in soup.find_all('meta'):
             if meta_tag.get('property') in ['og:site_name', 'og:title', 'twitter:site']:
@@ -572,11 +673,17 @@ def extract_contact_info(url):
                     json_data = json.loads(script.string)
                     if isinstance(json_data, dict):
                         # Check for organization/publisher name
-                        if json_data.get('@type') in ['Organization', 'Corporation', 'RealEstateAgent', 'RealEstateBusiness']:
+                        if json_data.get('@type') in ['Organization', 'Corporation', 'RealEstateAgent', 'RealEstateBusiness', 'LocalBusiness']:
                             if 'name' in json_data:
                                 company_candidates.append(json_data['name'])
                         elif 'publisher' in json_data and isinstance(json_data['publisher'], dict) and 'name' in json_data['publisher']:
                             company_candidates.append(json_data['publisher']['name'])
+                        # Look for real estate specific data
+                        if json_data.get('@type') == 'RealEstateAgent':
+                            if 'name' in json_data:
+                                company_candidates.append(json_data['name'])
+                            if 'brand' in json_data and isinstance(json_data['brand'], dict) and 'name' in json_data['brand']:
+                                company_candidates.append(json_data['brand']['name'])
                 except:
                     pass
         
@@ -608,6 +715,10 @@ def extract_contact_info(url):
             if len(domain_parts) >= 2:
                 # Add the main domain name (e.g., "example" from example.com)
                 company_candidates.append(domain_parts[-2].capitalize())
+                # Check if the domain name contains real estate terms
+                domain_name = domain_parts[-2].lower()
+                if any(term in domain_name for term in ['realty', 'realtor', 'property', 'home', 'estate']):
+                    company_candidates.append(domain_parts[-2].title() + " Real Estate")
         
         # Clean company candidates
         cleaned_candidates = []
@@ -619,8 +730,27 @@ def extract_contact_info(url):
                 if candidate:
                     cleaned_candidates.append(candidate)
         
-        if cleaned_candidates:
-            # Use the most common and reasonable length company name found
+        # Prioritize candidates that sound like real estate companies
+        real_estate_terms = ['realty', 'realtor', 'real estate', 'properties', 'homes', 'property', 'realtors', 'brokerage']
+        re_company_candidates = [c for c in cleaned_candidates if any(term in c.lower() for term in real_estate_terms)]
+        
+        if re_company_candidates:
+            # Use the most common and reasonable length real estate company name
+            company_counter = {}
+            for candidate in re_company_candidates:
+                # Normalize the candidate
+                normalized = candidate.lower()
+                if normalized in company_counter:
+                    company_counter[normalized]['count'] += 1
+                    company_counter[normalized]['original'] = candidate if len(candidate) > len(company_counter[normalized]['original']) else company_counter[normalized]['original']
+                else:
+                    company_counter[normalized] = {'count': 1, 'original': candidate}
+            
+            # Get the most common, with a preference for longer names
+            if company_counter:
+                company = max(company_counter.values(), key=lambda x: (x['count'], len(x['original'])))['original']
+        elif cleaned_candidates:
+            # If no real estate specific company names, use the most common candidate
             company_counter = {}
             for candidate in cleaned_candidates:
                 # Normalize the candidate
@@ -639,17 +769,34 @@ def extract_contact_info(url):
         if not company and domain:
             company = domain.split('.')[0].capitalize()
         
-        # Name extraction - this is challenging and would require more sophisticated NLP
+        # Name extraction with target-specific optimizations
         name = ""
         name_candidates = []
         
-        # Look for common name patterns
+        # Add additional name patterns based on target types
         name_patterns = [
             r'(?:Contact|About)(?:\s+Us)?(?:\s*[-:])?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
             r'(?:Mr\.|Ms\.|Mrs\.|Dr\.|Miss|Sir)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
-            r'(?:Owner|Founder|CEO|President|Director|Agent|Realtor|Broker|Manager):\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
-            r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*[-–]\s*(?:Realtor|Agent|Broker|CEO|Founder))',
+            r'(?:Owner|Founder|CEO|President|Director|Manager|Contact):\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
+            r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*[-–]\s*(?:CEO|Founder|President|Director|Manager))',
         ]
+        
+        # Add target-specific patterns
+        for target in target_types:
+            if target in target_patterns:
+                for job in target_patterns[target]["job_titles"]:
+                    name_patterns.append(f'(?:{job})(?:\\s*[-:])\\s+([A-Z][a-z]+(?:\\s+[A-Z][a-z]+){{1,2}})')
+                    name_patterns.append(f'([A-Z][a-z]+\\s+[A-Z][a-z]+)(?:\\s*[-–]\\s*(?:{job}))')
+        
+        # For real estate agents and brokers, add specific patterns
+        if "agent" in target_types or "broker" in target_types:
+            name_patterns.extend([
+                r'(?:Listing Agent|Listing Broker):\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
+                r'(?:Agent|Broker):\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})',
+                r'([A-Z][a-z]+\s+[A-Z][a-z]+)(?:\s*[-–]\s*(?:Realtor|REALTOR®|Agent|Broker))',
+                r'(?:Contact\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})(?:\s+for\s+(?:more\s+information|details|showing|tour))',
+                r'(?:Call|Text|Email)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})(?:\s+(?:at|today|now))',
+            ])
         
         # First try with the cleaned text content for more accurate matches
         for pattern in name_patterns:
@@ -663,20 +810,31 @@ def extract_contact_info(url):
                 name_matches = re.findall(pattern, downloaded)
                 name_candidates.extend(name_matches)
         
-        # Look for structured data about authors
+        # Look for structured data about people, especially real estate agents
         for elem in soup.find_all(itemtype=re.compile('schema.org/(Person|RealEstateAgent)')):
             name_elem = elem.find(itemprop='name')
             if name_elem:
                 name_candidates.append(name_elem.text.strip())
         
+        # Look for real estate specific contact elements
+        if "agent" in target_types or "broker" in target_types:
+            agent_indicators = ['agent', 'realtor', 'broker', 'listing', 'contact']
+            for indicator in agent_indicators:
+                for element in soup.find_all(class_=lambda c: c and indicator in str(c).lower()):
+                    # Look for name-like patterns in this element
+                    name_text = element.text
+                    for pattern in name_patterns:
+                        matches = re.findall(pattern, name_text)
+                        name_candidates.extend(matches)
+        
         # Look for author tags
-        for author_tag in soup.find_all(['address', 'span', 'div', 'p'], class_=lambda c: c and 'author' in c.lower()):
+        for author_tag in soup.find_all(['address', 'span', 'div', 'p'], class_=lambda c: c and 'author' in str(c).lower()):
             author_text = author_tag.text.strip()
             if author_text and len(author_text) < 50:  # Reasonable length for a name
                 name_candidates.append(author_text)
         
         # Check for byline in article
-        for byline in soup.find_all(class_=lambda c: c and 'byline' in c.lower()):
+        for byline in soup.find_all(class_=lambda c: c and 'byline' in str(c).lower()):
             byline_text = byline.text.strip()
             if byline_text and len(byline_text) < 50:
                 name_candidates.append(byline_text)
@@ -696,20 +854,120 @@ def extract_contact_info(url):
                 
                 # Check if it looks like a name (2-3 words, each capitalized)
                 words = candidate.split()
-                if 2 <= len(words) <= 3 and all(w[0].isupper() if w else False for w in words):
+                if 1 <= len(words) <= 3 and all(w[0].isupper() if w else False for w in words):
                     filtered_names.append(candidate)
             
             if filtered_names:
-                name = filtered_names[0]  # Take the first filtered name
+                # Take the most frequent name
+                name_counts = {}
+                for filtered_name in filtered_names:
+                    normalized = filtered_name.lower()
+                    name_counts[normalized] = name_counts.get(normalized, 0) + 1
+                
+                if name_counts:
+                    most_common_name = max(name_counts.items(), key=lambda x: x[1])[0]
+                    # Find the original capitalization
+                    for filtered_name in filtered_names:
+                        if filtered_name.lower() == most_common_name:
+                            name = filtered_name
+                            break
         
-        return {
+        # Additional fields for enhanced lead information
+        job_title = ""
+        location = ""
+        social_profiles = {}
+        website = ""
+        
+        # Extract job title if available (especially for real estate professionals)
+        job_title_patterns = [
+            r'([A-Za-z\s]+(?:Agent|Broker|Realtor|REALTOR®|Associate|President|Owner|CEO|Founder|Manager))',
+            r'((?:Real Estate|Property|Senior|Executive|Lead|Chief|Principal)\s+[A-Za-z\s]+)',
+        ]
+        
+        for pattern in job_title_patterns:
+            matches = re.findall(pattern, downloaded)
+            if matches:
+                potential_titles = [m for m in matches if len(m) < 50 and not any(skip in m.lower() for skip in ['contact', 'call', 'email'])]
+                if potential_titles:
+                    # Prefer titles containing target-specific terms
+                    target_specific_titles = []
+                    for title in potential_titles:
+                        for target in target_types:
+                            if target in target_patterns and any(term in title.lower() for term in target_patterns[target]["job_titles"]):
+                                target_specific_titles.append(title)
+                    
+                    if target_specific_titles:
+                        job_title = target_specific_titles[0].strip()
+                    else:
+                        job_title = potential_titles[0].strip()
+                    break
+        
+        # Look for social media profiles
+        social_media_patterns = {
+            'facebook': r'(?:facebook\.com/|fb\.com/)([A-Za-z0-9._%+-]+)',
+            'twitter': r'(?:twitter\.com/|x\.com/)([A-Za-z0-9_]+)',
+            'linkedin': r'linkedin\.com/(?:in|company)/([A-Za-z0-9_-]+)',
+            'instagram': r'instagram\.com/([A-Za-z0-9._]+)',
+            'youtube': r'youtube\.com/(?:user/|channel/)?([A-Za-z0-9_-]+)'
+        }
+        
+        for platform, pattern in social_media_patterns.items():
+            matches = re.findall(pattern, downloaded)
+            if matches:
+                social_profiles[platform] = matches[0]
+        
+        # Try to extract location information
+        location_patterns = [
+            r'(?:Located in|Serving|Based in)\s+([A-Za-z\s,]+?(?:Area|County|Region|City|State))',
+            r'([A-Za-z]+,\s+[A-Z]{2})',  # City, STATE format
+            r'([A-Za-z\s]+(?:County|Region|Area))'
+        ]
+        
+        for pattern in location_patterns:
+            matches = re.findall(pattern, downloaded)
+            if matches:
+                location = matches[0].strip()
+                break
+        
+        # Build the enhanced contact data
+        contact_data = {
             "name": name,
             "email": email,
             "phone": phone,
             "company": company,
+            "job_title": job_title,
+            "location": location,
+            "social_profiles": social_profiles,
             "source_url": url,
             "domain": domain
         }
+        
+        # Add relevance score for target types
+        target_relevance = {}
+        combined_text = (text_content or "") + downloaded
+        
+        for target in target_types:
+            if target in target_patterns:
+                score = 0
+                # Check for name indicators
+                for term in target_patterns[target]["name_indicator"]:
+                    score += combined_text.lower().count(term) * 2
+                
+                # Check for context terms
+                for term in target_patterns[target]["context_terms"]:
+                    score += combined_text.lower().count(term)
+                
+                # Check job title match
+                if job_title:
+                    for title in target_patterns[target]["job_titles"]:
+                        if title.lower() in job_title.lower():
+                            score += 10
+                
+                target_relevance[target] = score
+        
+        contact_data["target_relevance"] = target_relevance
+        
+        return contact_data
     
     except Exception as e:
         logger.exception(f"Error extracting contact info from {url}: {str(e)}")
@@ -723,33 +981,83 @@ def extract_contact_info(url):
         }
 
 
-def crawl_search_results(query, search_engines=None, num_results=10, use_cache=True):
+def crawl_search_results(query, search_engines=None, num_results=10, use_cache=True, target_types=None, location=None):
     """
-    Search multiple engines and crawl the results to extract contact information.
+    Search multiple engines and crawl the results to extract contact information,
+    with enhanced targeting for real estate professionals or properties.
     
     Args:
         query (str): The search query
         search_engines (list): List of search engines to use
         num_results (int): Number of results to crawl per engine
         use_cache (bool): Whether to use cached results if available
+        target_types (list): Types of targets to focus on ('agent', 'broker', 'property', 'investor')
+        location (str): Location to focus search on (city, state, country)
         
     Returns:
         list: List of dictionaries containing contact information
     """
     if search_engines is None:
         search_engines = ["google", "bing"]
+        
+    if target_types is None:
+        target_types = ["agent", "broker", "property"]
+        
+    # Enhance query with target types and location
+    enhanced_query = query
+    
+    # Add target type specificity
+    if target_types:
+        target_terms = {
+            "agent": ["real estate agent", "realtor", "real estate professional"],
+            "broker": ["real estate broker", "property broker", "real estate firm"],
+            "property": ["property listing", "home listing", "real estate listing"],
+            "investor": ["real estate investor", "property investor", "real estate investment"],
+            "buyer": ["home buyer", "property buyer", "house hunting"],
+            "seller": ["home seller", "property seller", "selling house"]
+        }
+        
+        # Add target type terms to query selectively
+        target_phrases = []
+        for target in target_types:
+            if target in target_terms:
+                # Take just one term from each category to avoid making the query too long
+                target_phrases.append(target_terms[target][0])
+                
+        if target_phrases:
+            # Add the first target phrase directly to the query
+            if not any(phrase in query.lower() for phrase in target_phrases[0].split()):
+                enhanced_query = f"{enhanced_query} {target_phrases[0]}"
+    
+    # Add location if provided and not already in query
+    if location and location.lower() not in query.lower():
+        enhanced_query = f"{enhanced_query} {location}"
+    
+    logger.info(f"Enhanced query: '{enhanced_query}' (original: '{query}')")
+    
+    # Prepare specialized queries for different search engines
+    google_query = enhanced_query
+    bing_query = enhanced_query
+    
+    # For Google, add some advanced search operators
+    if "agent" in target_types or "broker" in target_types:
+        # Add site operator to focus on real estate sites
+        google_query += " site:realtor.com OR site:zillow.com OR site:trulia.com OR site:homes.com OR site:redfin.com"
     
     all_results = []
     
     for engine in search_engines:
-        if engine == "google":
-            results = search_google(query, num_results, use_cache)
-        elif engine == "bing":
-            results = search_bing(query, num_results, use_cache)
-        else:
-            continue
-        
-        all_results.extend(results)
+        try:
+            if engine == "google":
+                results = search_google(google_query, num_results, use_cache)
+            elif engine == "bing":
+                results = search_bing(bing_query, num_results, use_cache)
+            else:
+                continue
+            
+            all_results.extend(results)
+        except Exception as e:
+            logger.exception(f"Error searching {engine}: {str(e)}")
     
     # Deduplicate results by URL
     unique_urls = set()
@@ -760,24 +1068,150 @@ def crawl_search_results(query, search_engines=None, num_results=10, use_cache=T
             unique_urls.add(result["link"])
             unique_results.append(result)
     
-    # Extract contact information from each unique URL
-    contact_info = []
+    # Filter results by relevance to real estate
+    relevant_terms = [
+        "real estate", "property", "house", "home", "apartment", "condo", "realtor", 
+        "broker", "agent", "listing", "buy", "sell", "rent", "sale", "mortgage", 
+        "investment", "investor"
+    ]
     
-    for result in unique_results[:num_results]:
+    # Add location terms to relevant terms if provided
+    if location:
+        relevant_terms.append(location.lower())
+    
+    # Score and sort results by relevance
+    scored_results = []
+    for result in unique_results:
+        title = result.get("title", "").lower()
+        snippet = result.get("snippet", "").lower()
+        link = result.get("link", "").lower()
+        
+        # Calculate relevance score
+        score = 0
+        for term in relevant_terms:
+            if term in title:
+                score += 3  # Title matches are more important
+            if term in snippet:
+                score += 1
+            if term in link:
+                score += 2  # URL matches are also quite relevant
+        
+        # Prioritize real estate websites
+        real_estate_domains = [
+            "realtor.com", "zillow.com", "trulia.com", "homes.com", "redfin.com",
+            "century21.com", "coldwellbanker.com", "remax.com", "kw.com", "bhhs.com",
+            "elliman.com", "compass.com", "ziprealty.com", "movoto.com", "homefinder.com"
+        ]
+        
+        domain = urlparse(link).netloc.lower()
+        if any(rd in domain for rd in real_estate_domains):
+            score += 5  # Big boost for real estate specific sites
+        
+        # Append to scored results
+        scored_results.append((score, result))
+    
+    # Sort by relevance score (highest first)
+    scored_results.sort(reverse=True, key=lambda x: x[0])
+    
+    # Extract contact information from each unique URL, prioritizing high-score results
+    contact_info = []
+    processed_count = 0
+    
+    # Process up to num_results, but continue if we don't have enough with contact info
+    for _, result in scored_results:
+        if processed_count >= num_results and len(contact_info) >= num_results // 2:
+            break
+            
         # Add a delay to avoid overloading servers
         time.sleep(random.uniform(1, 3))
         
         url = result["link"]
-        contact_data = extract_contact_info(url)
+        try:
+            contact_data = extract_contact_info(url, target_types=target_types)
+            
+            # Only include if we found at least one piece of contact information
+            if contact_data["name"] or contact_data["email"] or contact_data["phone"] or contact_data["company"]:
+                contact_data["query"] = query
+                contact_data["enhanced_query"] = enhanced_query
+                contact_data["title"] = result.get("title", "")
+                contact_data["snippet"] = result.get("snippet", "")
+                contact_data["lead_type"] = determine_lead_type(contact_data, target_types)
+                contact_info.append(contact_data)
+        except Exception as e:
+            logger.exception(f"Error extracting contact info from {url}: {str(e)}")
         
-        # Only include if we found at least one piece of contact information
-        if contact_data["name"] or contact_data["email"] or contact_data["phone"] or contact_data["company"]:
-            contact_data["query"] = query
-            contact_data["title"] = result.get("title", "")
-            contact_data["snippet"] = result.get("snippet", "")
-            contact_info.append(contact_data)
+        processed_count += 1
+        
+        # If we've processed enough URLs and have enough contacts, stop
+        if processed_count >= num_results * 2 and len(contact_info) >= num_results // 3:
+            break
+    
+    # Sort the final contacts by lead score
+    for contact in contact_info:
+        contact["lead_score"] = calculate_lead_score(contact)
+    
+    contact_info.sort(key=lambda x: x.get("lead_score", 0), reverse=True)
     
     return contact_info
+
+
+def determine_lead_type(contact_data, target_types=None):
+    """
+    Determine the type of lead based on contact data.
+    
+    Args:
+        contact_data (dict): Contact information data
+        target_types (list): Types of targets that were being looked for
+        
+    Returns:
+        str: Likely lead type ('agent', 'broker', 'investor', 'buyer', 'seller', 'other')
+    """
+    if not target_types:
+        target_types = ["agent", "broker", "property", "investor"]
+    
+    # Get relevant text fields
+    company = contact_data.get("company", "").lower()
+    title = contact_data.get("title", "").lower()
+    snippet = contact_data.get("snippet", "").lower()
+    
+    # Look for keywords indicating lead type
+    agent_terms = ["agent", "realtor", "real estate agent", "real estate professional"]
+    broker_terms = ["broker", "real estate broker", "brokerage", "realty"]
+    investor_terms = ["investor", "investment", "investments", "investing"]
+    buyer_terms = ["buyer", "buying", "purchase", "looking for", "searching for"]
+    seller_terms = ["seller", "selling", "sale", "listing agent"]
+    
+    # Check company name first (most reliable)
+    if any(term in company for term in agent_terms + broker_terms):
+        for term in broker_terms:
+            if term in company:
+                return "broker"
+        return "agent"
+    
+    # Check title and snippet
+    combined_text = title + " " + snippet
+    
+    # Count occurrences of each type of term
+    counts = {
+        "agent": sum(term in combined_text for term in agent_terms),
+        "broker": sum(term in combined_text for term in broker_terms),
+        "investor": sum(term in combined_text for term in investor_terms),
+        "buyer": sum(term in combined_text for term in buyer_terms),
+        "seller": sum(term in combined_text for term in seller_terms)
+    }
+    
+    # Get the type with the highest count
+    max_count = max(counts.values())
+    if max_count > 0:
+        for lead_type, count in counts.items():
+            if count == max_count:
+                return lead_type
+    
+    # If no clear type, use the first target type
+    if target_types and target_types[0] in ["agent", "broker", "investor", "buyer", "seller"]:
+        return target_types[0]
+    
+    return "other"
 
 
 def calculate_lead_score(contact_info):
