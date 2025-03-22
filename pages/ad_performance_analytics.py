@@ -1,5 +1,6 @@
 """
 Ad Performance Analytics Page for displaying marketing performance metrics across platforms.
+Provides integration with major ad platforms and campaign management capabilities.
 """
 
 import streamlit as st
@@ -7,7 +8,9 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 import random
+import json
 from utils import social_media_manager
+from utils import ad_platform_api
 
 def get_mock_campaign_data():
     """Generate mock campaign data for demonstration purposes."""
@@ -508,6 +511,472 @@ def show_ad_performance_analytics():
         if st.button("Generate Detailed Marketing Report"):
             st.success("Detailed marketing performance report would be generated and downloaded")
             st.info("This feature would export a comprehensive PDF or Excel report in a production environment")
+        
+        # Ad Platform API Integration section
+        st.markdown("---")
+        st.subheader("Ad Platform API Integration")
+        
+        # Check available ad platforms
+        available_ad_platforms = ad_platform_api.get_available_platforms()
+        
+        # Create tabs for different integration features
+        api_tab1, api_tab2, api_tab3 = st.tabs(["Connect Platforms", "Campaign Management", "Audience Insights"])
+        
+        with api_tab1:
+            st.markdown("""
+            Connect your real estate marketing campaigns with major advertising platforms using API integration.
+            Direct API connections enable automated reporting, performance insights, and campaign optimization.
+            """)
+            
+            # Platform connection status
+            st.markdown("### Platform Connection Status")
+            
+            platforms = ["Facebook", "Google", "LinkedIn", "Twitter", "TikTok"]
+            platform_status = {}
+            
+            for platform in platforms:
+                platform_status[platform.lower()] = platform.lower() in available_ad_platforms
+            
+            # Display status and connection forms for each platform
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                for platform in platforms[:3]:  # First 3 platforms in first column
+                    with st.expander(f"{platform} Ads Integration"):
+                        if platform_status[platform.lower()]:
+                            st.success(f"✅ Connected to {platform} Ads API")
+                            if st.button(f"Disconnect {platform}", key=f"disconnect_{platform.lower()}"):
+                                st.info(f"This would disconnect the {platform} Ads API integration")
+                        else:
+                            st.warning(f"❌ Not connected to {platform} Ads API")
+                            
+                            # Display connection form based on platform
+                            if platform == "Facebook":
+                                st.text_input("App ID", key="fb_app_id", type="password")
+                                st.text_input("App Secret", key="fb_app_secret", type="password")
+                                st.text_input("Access Token", key="fb_access_token", type="password")
+                                st.text_input("Ad Account ID", key="fb_ad_account_id")
+                            elif platform == "Google":
+                                st.text_input("Developer Token", key="google_developer_token", type="password")
+                                st.text_input("Client ID", key="google_client_id", type="password")
+                                st.text_input("Client Secret", key="google_client_secret", type="password")
+                                st.text_input("Refresh Token", key="google_refresh_token", type="password")
+                                st.text_input("Customer ID", key="google_customer_id")
+                            elif platform == "LinkedIn":
+                                st.text_input("Client ID", key="linkedin_client_id", type="password")
+                                st.text_input("Client Secret", key="linkedin_client_secret", type="password")
+                                st.text_input("Access Token", key="linkedin_access_token", type="password")
+                                st.text_input("Organization ID", key="linkedin_organization_id")
+                                
+                            if st.button(f"Connect {platform}", key=f"connect_{platform.lower()}"):
+                                st.info(f"This would connect to the {platform} Ads API using the provided credentials")
+            
+            with col2:
+                for platform in platforms[3:]:  # Last 2 platforms in second column
+                    with st.expander(f"{platform} Ads Integration"):
+                        if platform_status[platform.lower()]:
+                            st.success(f"✅ Connected to {platform} Ads API")
+                            if st.button(f"Disconnect {platform}", key=f"disconnect_{platform.lower()}"):
+                                st.info(f"This would disconnect the {platform} Ads API integration")
+                        else:
+                            st.warning(f"❌ Not connected to {platform} Ads API")
+                            
+                            # Display connection form based on platform
+                            if platform == "Twitter":
+                                st.text_input("API Key", key="twitter_api_key", type="password")
+                                st.text_input("API Secret", key="twitter_api_secret", type="password")
+                                st.text_input("Access Token", key="twitter_access_token", type="password")
+                                st.text_input("Access Token Secret", key="twitter_access_token_secret", type="password")
+                                st.text_input("Account ID", key="twitter_account_id")
+                            elif platform == "TikTok":
+                                st.text_input("App ID", key="tiktok_app_id", type="password")
+                                st.text_input("App Secret", key="tiktok_app_secret", type="password")
+                                st.text_input("Access Token", key="tiktok_access_token", type="password")
+                                st.text_input("Advertiser ID", key="tiktok_advertiser_id")
+                                
+                            if st.button(f"Connect {platform}", key=f"connect_{platform.lower()}"):
+                                st.info(f"This would connect to the {platform} Ads API using the provided credentials")
+            
+            # Bulk credentials upload option
+            st.markdown("### Bulk Credentials Upload")
+            st.markdown("""
+            You can also upload a JSON file containing credentials for multiple platforms at once.
+            This file should follow the structure defined in the documentation.
+            """)
+            
+            uploaded_file = st.file_uploader("Upload credentials JSON file", type=["json"])
+            if uploaded_file is not None:
+                st.info("This would process the uploaded credentials file and connect to the specified ad platforms")
+        
+        with api_tab2:
+            st.markdown("""
+            Create, manage, and optimize your real estate advertising campaigns directly from this platform.
+            Automated campaign management enables you to scale your marketing efforts efficiently.
+            """)
+            
+            # Campaign management section
+            st.markdown("### Campaign Management")
+            
+            # Platform selection for campaign management
+            platform_options = ['Facebook', 'Google', 'LinkedIn', 'Twitter', 'TikTok']
+            selected_platform = st.selectbox("Select Platform for Campaign Management", platform_options)
+            
+            if not platform_status.get(selected_platform.lower(), False):
+                st.warning(f"You need to connect to {selected_platform} Ads API first to manage campaigns")
+            else:
+                # Campaign actions
+                action = st.radio("Action", ["Create New Campaign", "Optimize Existing Campaigns", "View Campaign Performance"])
+                
+                if action == "Create New Campaign":
+                    st.markdown("### Create New Real Estate Campaign")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        campaign_name = st.text_input("Campaign Name", value=f"RE Property Campaign {datetime.now().strftime('%b-%Y')}")
+                        campaign_objective = st.selectbox(
+                            "Campaign Objective", 
+                            ["Property Listing Promotion", "Open House Awareness", "Agent Branding", "Market Report Distribution"]
+                        )
+                        
+                        budget_type = st.radio("Budget Type", ["Daily", "Lifetime"])
+                        budget_amount = st.number_input("Budget Amount ($)", min_value=5.0, max_value=10000.0, value=50.0)
+                        
+                    with col2:
+                        start_date = st.date_input("Start Date", datetime.now())
+                        end_date = st.date_input("End Date", datetime.now() + timedelta(days=30))
+                        
+                        target_audience = st.multiselect(
+                            "Target Audience Interests",
+                            ["Real Estate", "Home Buying", "Home Selling", "Interior Design", "Home Improvement", 
+                             "Mortgage", "Investment Properties", "Luxury Living", "Residential Properties", "Commercial Properties"]
+                        )
+                        
+                        location_targeting = st.text_input("Location Targeting", value="New York, NY")
+                    
+                    # Ad creative section
+                    st.markdown("### Ad Creative")
+                    
+                    ad_headline = st.text_input("Ad Headline", value="Discover Your Dream Home")
+                    ad_text = st.text_area(
+                        "Ad Text", 
+                        value="Explore our curated selection of premium properties in the most desirable neighborhoods. Schedule a viewing today!"
+                    )
+                    
+                    # Image upload would be handled here
+                    st.file_uploader("Upload Ad Image", type=["jpg", "jpeg", "png"])
+                    
+                    # Landing page URL
+                    landing_page_url = st.text_input("Landing Page URL", value="https://yourrealestatesite.com/listings")
+                    
+                    # Call to action
+                    call_to_action = st.selectbox(
+                        "Call to Action",
+                        ["Learn More", "Schedule Viewing", "Contact Agent", "See Listings", "Apply Now", "Download Guide"]
+                    )
+                    
+                    if st.button("Create Campaign", key="create_campaign_button"):
+                        # Prepare campaign data
+                        campaign_data = {
+                            "name": campaign_name,
+                            "objective": campaign_objective,
+                            "budget_type": budget_type,
+                            "budget_amount": budget_amount,
+                            "start_date": start_date.isoformat(),
+                            "end_date": end_date.isoformat(),
+                            "targeting": {
+                                "interests": target_audience,
+                                "location": location_targeting
+                            },
+                            "ad_creative": {
+                                "headline": ad_headline,
+                                "text": ad_text,
+                                "cta": call_to_action,
+                                "landing_page": landing_page_url
+                            }
+                        }
+                        
+                        # This would call the API to create the campaign in a production environment
+                        result = ad_platform_api.create_ad_campaign(selected_platform.lower(), campaign_data)
+                        
+                        st.success(f"Campaign '{campaign_name}' would be created on {selected_platform} (simulation)")
+                        st.info("In a production environment, this would use the API to create a real campaign")
+                
+                elif action == "Optimize Existing Campaigns":
+                    st.markdown("### Optimize Existing Campaigns")
+                    
+                    # Get campaign IDs (simulated)
+                    campaign_ids = [f"{selected_platform}_Campaign_{i}" for i in range(1, 6)]
+                    campaign_names = [f"{selected_platform} Property Campaign {i}" for i in range(1, 6)]
+                    
+                    campaigns = pd.DataFrame({
+                        "id": campaign_ids,
+                        "name": campaign_names,
+                        "status": ["Active", "Active", "Paused", "Active", "Completed"],
+                        "budget": [50.0, 75.0, 100.0, 200.0, 150.0],
+                        "roi": [120.5, 85.3, 45.7, 200.1, 75.9]
+                    })
+                    
+                    st.dataframe(campaigns, use_container_width=True)
+                    
+                    # Select campaign to optimize
+                    selected_campaign = st.selectbox("Select Campaign to Optimize", campaign_names)
+                    selected_id = campaign_ids[campaign_names.index(selected_campaign)]
+                    
+                    if st.button("Run Optimization", key="run_optimization_button"):
+                        with st.spinner(f"Analyzing {selected_campaign} for optimization opportunities..."):
+                            # This would call the API to get optimization recommendations
+                            optimization = ad_platform_api.optimize_ad_campaign(selected_platform.lower(), selected_id)
+                            
+                            st.success("Optimization analysis completed")
+                            
+                            # Show recommendations
+                            st.markdown("### Optimization Recommendations")
+                            
+                            recommendations = [
+                                {"type": "bidding", "action": "increase", "target": "cpc", "amount": "15%", "reason": "Underperforming on high-value keywords"},
+                                {"type": "audience", "action": "expand", "target": "demographics", "detail": "Include 35-44 age group", "reason": "High conversion rate in similar campaigns"},
+                                {"type": "creative", "action": "test", "target": "new_versions", "detail": "A/B test with property video content", "reason": "Video content showing 22% higher engagement"}
+                            ]
+                            
+                            for i, rec in enumerate(recommendations):
+                                st.info(f"""
+                                **Recommendation {i+1}: {rec['action'].title()} {rec['target'].replace('_', ' ')}**
+                                
+                                Action: {rec['action'].title()} {rec['target'].replace('_', ' ')} {rec.get('amount', '')} {rec.get('detail', '')}
+                                Reason: {rec['reason']}
+                                """)
+                                
+                                # Add apply button for each recommendation
+                                if st.button(f"Apply Recommendation {i+1}", key=f"apply_rec_{i}"):
+                                    st.success(f"Recommendation would be applied to campaign '{selected_campaign}'")
+                
+                else:  # View Campaign Performance
+                    st.markdown("### Campaign Performance")
+                    
+                    # Date range selection
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        start_date = st.date_input("Start Date", datetime.now() - timedelta(days=30))
+                    with col2:
+                        end_date = st.date_input("End Date", datetime.now())
+                    
+                    if st.button("Fetch Performance Data", key="fetch_performance_button"):
+                        with st.spinner("Fetching campaign performance data..."):
+                            # This would call the API to get performance data in a production environment
+                            date_range = {
+                                "start_date": start_date.isoformat(),
+                                "end_date": end_date.isoformat()
+                            }
+                            
+                            st.info(f"This would fetch real performance data from {selected_platform} Ads API in a production environment")
+                            
+                            # Show a placeholder for the results
+                            st.markdown("### Performance Results")
+                            st.markdown(f"Performance data for {selected_platform} campaigns from {start_date} to {end_date}")
+                            
+                            # Sample metrics (would come from API in production)
+                            metrics = {
+                                "impressions": random.randint(10000, 100000),
+                                "clicks": random.randint(500, 5000),
+                                "ctr": random.uniform(1.0, 8.0),
+                                "conversions": random.randint(10, 500),
+                                "conversion_rate": random.uniform(1.0, 20.0),
+                                "spend": random.uniform(500, 5000),
+                                "cost_per_click": random.uniform(0.5, 3.0),
+                                "cost_per_conversion": random.uniform(10, 100),
+                                "roi": random.uniform(50, 300)
+                            }
+                            
+                            # Display metrics
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.metric("Impressions", f"{metrics['impressions']:,}")
+                                st.metric("Clicks", f"{metrics['clicks']:,}")
+                                st.metric("CTR", f"{metrics['ctr']:.2f}%")
+                            
+                            with col2:
+                                st.metric("Conversions", f"{metrics['conversions']:,}")
+                                st.metric("Conversion Rate", f"{metrics['conversion_rate']:.2f}%") 
+                                st.metric("Spend", f"${metrics['spend']:.2f}")
+                            
+                            with col3:
+                                st.metric("Cost per Click", f"${metrics['cost_per_click']:.2f}")
+                                st.metric("Cost per Conversion", f"${metrics['cost_per_conversion']:.2f}")
+                                st.metric("ROI", f"{metrics['roi']:.2f}%")
+        
+        with api_tab3:
+            st.markdown("""
+            Gain deep insights into your target audience across different advertising platforms.
+            Use these insights to refine your real estate marketing strategy and targeting.
+            """)
+            
+            # Platform selection for audience insights
+            selected_platform = st.selectbox("Select Platform for Audience Insights", platform_options, key="audience_platform")
+            
+            if not platform_status.get(selected_platform.lower(), False):
+                st.warning(f"You need to connect to {selected_platform} Ads API first to access audience insights")
+            else:
+                # Button to fetch audience insights
+                if st.button("Fetch Audience Insights", key="fetch_audience_button"):
+                    with st.spinner(f"Fetching audience insights from {selected_platform}..."):
+                        # This would call the API to get audience insights in a production environment
+                        insights = ad_platform_api.get_platform_audience_insights(selected_platform.lower())
+                        
+                        # Display insights
+                        st.markdown("### Audience Insights")
+                        
+                        # Demographics section
+                        st.markdown("#### Demographics")
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Age distribution
+                            if selected_platform.lower() in ["facebook", "google"]:
+                                age_data = {
+                                    "Age Group": ["25-34", "35-44", "45-54", "55+"],
+                                    "Percentage": [35, 28, 22, 15]
+                                }
+                                
+                                age_df = pd.DataFrame(age_data)
+                                
+                                fig = px.bar(
+                                    age_df,
+                                    x="Age Group",
+                                    y="Percentage",
+                                    title="Age Distribution",
+                                    text_auto=True
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+                        
+                        with col2:
+                            # Gender distribution
+                            if selected_platform.lower() in ["facebook", "google"]:
+                                gender_data = {
+                                    "Gender": ["Female", "Male"],
+                                    "Percentage": [48, 52]
+                                }
+                                
+                                gender_df = pd.DataFrame(gender_data)
+                                
+                                fig = px.pie(
+                                    gender_df,
+                                    names="Gender",
+                                    values="Percentage",
+                                    title="Gender Distribution"
+                                )
+                                st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Interests section
+                        st.markdown("#### Interests & Behaviors")
+                        
+                        if selected_platform.lower() == "facebook":
+                            interests_data = {
+                                "Interest": ["Home Improvement", "Real Estate", "Interior Design", "Finance", "Travel"],
+                                "Strength": ["Very High", "Very High", "High", "Medium", "Medium"],
+                                "Score": [90, 85, 75, 60, 55]
+                            }
+                            
+                            interests_df = pd.DataFrame(interests_data)
+                            
+                            fig = px.bar(
+                                interests_df,
+                                x="Interest",
+                                y="Score",
+                                color="Strength",
+                                title="Interest Categories",
+                                text_auto=True
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Behaviors
+                            behaviors_data = {
+                                "Behavior": ["First-time Home Buyers", "Investors", "High Net Worth"],
+                                "Affinity": [3.5, 2.8, 1.7]
+                            }
+                            
+                            behaviors_df = pd.DataFrame(behaviors_data)
+                            
+                            fig = px.bar(
+                                behaviors_df,
+                                x="Behavior",
+                                y="Affinity",
+                                title="Behavior Affinity (Multiplier vs Average)",
+                                text_auto=True
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        elif selected_platform.lower() == "google":
+                            # In-market segments
+                            segments_data = {
+                                "Segment": ["Real Estate", "Mortgages", "Home & Garden", "Luxury Goods"],
+                                "Index": [5.7, 4.8, 3.2, 2.1]
+                            }
+                            
+                            segments_df = pd.DataFrame(segments_data)
+                            
+                            fig = px.bar(
+                                segments_df,
+                                x="Segment",
+                                y="Index",
+                                title="In-Market Segments (Multiplier vs Average)",
+                                text_auto=True
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                            
+                            # Affinity categories
+                            affinity_data = {
+                                "Category": ["Home Decor Enthusiasts", "Avid Investors", "Luxury Shoppers"],
+                                "Index": [4.2, 3.9, 2.8]
+                            }
+                            
+                            affinity_df = pd.DataFrame(affinity_data)
+                            
+                            fig = px.bar(
+                                affinity_df,
+                                x="Category",
+                                y="Index",
+                                title="Affinity Categories (Multiplier vs Average)",
+                                text_auto=True
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        else:
+                            st.markdown(f"Showing audience insights for {selected_platform}")
+                            
+                            # Generic interests for other platforms
+                            interests_data = {
+                                "Interest": ["Real Estate", "Investments", "Home Design"],
+                                "Strength": ["High", "Medium", "Medium"],
+                                "Score": [80, 65, 60]
+                            }
+                            
+                            interests_df = pd.DataFrame(interests_data)
+                            
+                            fig = px.bar(
+                                interests_df,
+                                x="Interest",
+                                y="Score",
+                                color="Strength",
+                                title="Interest Categories",
+                                text_auto=True
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Recommendations based on audience insights
+                        st.markdown("#### Audience Targeting Recommendations")
+                        
+                        st.info("""
+                        ### Based on your audience insights:
+                        
+                        1. **Primary Target:** Focus on professionals aged 35-44 interested in real estate and home improvement
+                        2. **Secondary Target:** Expand to investors in the 45-54 age range with interests in finance
+                        3. **Creative Approach:** Emphasize property features that appeal to identified interests
+                        4. **Ad Scheduling:** Target weekday evenings when your audience is most active
+                        5. **Geographic Focus:** Concentrate budget on high-performing locations
+                        """)
 
 if __name__ == "__main__":
     show_ad_performance_analytics()
