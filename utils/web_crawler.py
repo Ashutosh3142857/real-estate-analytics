@@ -1251,7 +1251,8 @@ def calculate_lead_score(contact_info):
     return min(score, 100)  # Cap at 100
 
 
-def save_lead_campaign(campaign_name, keywords, search_engines, num_results=20):
+def save_lead_campaign(campaign_name, keywords, search_engines, num_results=20, 
+                target_types=None, location=None, min_lead_score=0, required_fields=None):
     """
     Save a lead generation campaign configuration.
     
@@ -1260,11 +1261,22 @@ def save_lead_campaign(campaign_name, keywords, search_engines, num_results=20):
         keywords (list): List of keywords to search for
         search_engines (list): List of search engines to use
         num_results (int): Number of results to crawl per keyword
+        target_types (list): Types of targets to focus on ('agent', 'broker', 'property', etc.)
+        location (str): Location to focus search on (city, state, country)
+        min_lead_score (int): Minimum lead score to include in results
+        required_fields (list): Fields that must be present for a lead to be valid
         
     Returns:
         str: ID of the saved campaign
     """
     ensure_cache_dir()
+    
+    # Set defaults for optional parameters
+    if target_types is None:
+        target_types = ["agent", "broker", "property"]
+    
+    if required_fields is None:
+        required_fields = ["email"]
     
     # Generate a unique ID for the campaign
     campaign_id = hashlib.md5(f"{campaign_name}_{datetime.now().isoformat()}".encode()).hexdigest()[:10]
@@ -1275,9 +1287,14 @@ def save_lead_campaign(campaign_name, keywords, search_engines, num_results=20):
         "keywords": keywords,
         "search_engines": search_engines,
         "num_results": num_results,
+        "target_types": target_types,
+        "location": location,
+        "min_lead_score": min_lead_score,
+        "required_fields": required_fields,
         "created_at": datetime.now().isoformat(),
         "last_run": None,
-        "status": "created"
+        "status": "created",
+        "lead_count": 0
     }
     
     campaigns_file = os.path.join(CACHE_DIR, "lead_campaigns.json")
@@ -1339,31 +1356,58 @@ def run_lead_campaign(campaign_id):
     
     all_contacts = []
     
+    # Get campaign parameters
+    target_types = campaign.get("target_types", ["agent", "broker", "property"])
+    location = campaign.get("location", None)
+    min_lead_score = campaign.get("min_lead_score", 0)
+    required_fields = campaign.get("required_fields", ["email"])
+    
     for keyword in campaign["keywords"]:
         contacts = crawl_search_results(
             keyword, 
             search_engines=campaign["search_engines"],
-            num_results=campaign["num_results"]
+            num_results=campaign["num_results"],
+            target_types=target_types,
+            location=location
         )
         
-        # Add lead scores
+        # Add campaign metadata to each contact
         for contact in contacts:
-            contact["lead_score"] = calculate_lead_score(contact)
+            # Set lead score if not already calculated
+            if "lead_score" not in contact:
+                contact["lead_score"] = calculate_lead_score(contact)
+                
             contact["campaign_id"] = campaign_id
             contact["keyword"] = keyword
         
         all_contacts.extend(contacts)
     
-    # Update campaign status
+    # Filter contacts based on minimum lead score and required fields
+    filtered_contacts = []
+    for contact in all_contacts:
+        if contact.get("lead_score", 0) >= min_lead_score:
+            if all(contact.get(field) for field in required_fields):
+                filtered_contacts.append(contact)
+    
+    # Update campaign status and metadata
     campaign["last_run"] = datetime.now().isoformat()
     campaign["status"] = "completed"
+    campaign["lead_count"] = len(filtered_contacts)
+    campaign["total_contacts"] = len(all_contacts)
+    campaign["filtered_contacts"] = len(filtered_contacts)
     
-    # Save the updated campaign
+    # Update the campaign in the list
+    for i, c in enumerate(campaigns):
+        if c["id"] == campaign_id:
+            campaigns[i] = campaign
+            break
+    
+    # Save the updated campaign list
     campaigns_file = os.path.join(CACHE_DIR, "lead_campaigns.json")
     with open(campaigns_file, 'w', encoding='utf-8') as f:
         json.dump(campaigns, f, ensure_ascii=False, indent=2)
     
-    # Save the contacts
+    # Save all contacts for this campaign
     contacts_file = os.path.join(CACHE_DIR, f"campaign_{campaign_id}_contacts.json")
     with open(contacts_file, 'w', encoding='utf-8') as f:
         json.dump(all_contacts, f, ensure_ascii=False, indent=2)
@@ -1434,7 +1478,7 @@ def export_contacts_to_csv(contacts, file_path):
 
 def import_contacts_to_database(contacts, source="web_crawler"):
     """
-    Import contacts to the database.
+    Import contacts to the database with enhanced lead information.
     
     Args:
         contacts (list): List of contact dictionaries
@@ -1448,20 +1492,83 @@ def import_contacts_to_database(contacts, source="web_crawler"):
     success_count = 0
     
     for contact in contacts:
+        # Map lead types to urgency
+        urgency_map = {
+            "buyer": "high",
+            "seller": "high",
+            "agent": "medium",
+            "broker": "medium",
+            "investor": "medium",
+            "property": "low",
+            "other": "low"
+        }
+        
+        # Get lead type and determine urgency
+        lead_type = contact.get("lead_type", "other")
+        urgency = urgency_map.get(lead_type, "medium")
+        
+        # Build enhanced lead data
         lead_data = {
             "name": contact.get("name", ""),
             "email": contact.get("email", ""),
             "phone": contact.get("phone", ""),
-            "source": source,
+            "source": f"{source}_{lead_type}" if lead_type != "other" else source,
             "lead_score": contact.get("lead_score", 0),
             "property_interest": contact.get("keyword", "unknown"),
             "price_range": "",
-            "urgency": "medium",
-            "status": "new"
+            "urgency": urgency,
+            "status": "new",
+            "pre_approved": False,  # Default value
+            "credit_score_range": "",  # Not known from web crawler
+            "lead_score": contact.get("lead_score", 0)
         }
         
+        # Build comprehensive notes
+        notes_parts = []
+        
         if contact.get("company"):
-            lead_data["notes"] = f"Company: {contact['company']}\nSource URL: {contact.get('source_url', '')}"
+            notes_parts.append(f"Company: {contact['company']}")
+        
+        if contact.get("job_title"):
+            notes_parts.append(f"Job Title: {contact['job_title']}")
+        
+        if contact.get("location"):
+            notes_parts.append(f"Location: {contact['location']}")
+        
+        if contact.get("source_url"):
+            notes_parts.append(f"Source URL: {contact['source_url']}")
+        
+        # Add lead type info
+        notes_parts.append(f"Lead Type: {lead_type.title()}")
+        
+        # Add social profiles if available
+        if contact.get("social_profiles") and any(contact["social_profiles"].values()):
+            social_profiles = []
+            for platform, profile in contact["social_profiles"].items():
+                if profile:
+                    social_profiles.append(f"{platform.title()}: {profile}")
+            
+            if social_profiles:
+                notes_parts.append("Social Profiles:\n" + "\n".join(social_profiles))
+        
+        # Add snippet if available (trimmed to avoid excessively long notes)
+        if contact.get("snippet"):
+            snippet = contact["snippet"]
+            if len(snippet) > 300:
+                snippet = snippet[:297] + "..."
+            notes_parts.append(f"Page Snippet: {snippet}")
+        
+        # Combine all notes
+        lead_data["notes"] = "\n\n".join(notes_parts)
+        
+        # Set viewed listings based on whether this is from property listing
+        if lead_type == "property":
+            lead_data["viewed_listings"] = 1
+        else:
+            lead_data["viewed_listings"] = 0
+            
+        # Add additional metrics that might help with lead scoring
+        lead_data["website_visits"] = 1  # We found them once
         
         try:
             add_lead(lead_data)

@@ -9,6 +9,7 @@ This page allows users to:
 import os
 import json
 import time
+from urllib.parse import urlparse
 import pandas as pd
 import streamlit as st
 from utils.web_crawler import (
