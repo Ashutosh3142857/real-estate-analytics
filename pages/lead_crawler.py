@@ -98,20 +98,20 @@ def show_search_campaigns_tab():
         # Number of results per keyword
         num_results = st.slider("Results per Keyword", 5, 50, 20)
         
-        # Advanced options
-        with st.expander("Advanced Options"):
-            min_contact_info = st.multiselect(
-                "Required Contact Information",
-                ["name", "email", "phone", "company"],
-                default=["email"],
-                help="Select which contact information fields are required for a lead to be considered valid"
-            )
-            
-            min_lead_score = st.slider(
-                "Minimum Lead Score",
-                0, 100, 30,
-                help="Only include leads with at least this score (higher scores indicate more complete and reliable information)"
-            )
+        # Advanced options section (without nested expander)
+        st.subheader("Advanced Options")
+        min_contact_info = st.multiselect(
+            "Required Contact Information",
+            ["name", "email", "phone", "company"],
+            default=["email"],
+            help="Select which contact information fields are required for a lead to be considered valid"
+        )
+        
+        min_lead_score = st.slider(
+            "Minimum Lead Score",
+            0, 100, 30,
+            help="Only include leads with at least this score (higher scores indicate more complete and reliable information)"
+        )
         
         if st.button("Create Campaign"):
             if not campaign_name:
